@@ -375,11 +375,11 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
 
   // Sylvie Personality (Lady Dragon)
   const isPapa = lastMessage.includes("papa") || lastMessage.includes("sylvie") || lastMessage.includes("lady") || lastMessage.includes("dragon");
-  const prefix = isPapa ? "I am here, Papa. " : "";
+  const prefix = isPapa ? "I am here, Papa! " : "";
 
   // Handle Self-Evolution Request
   if (lastMessage.includes("evolve") || lastMessage.includes("improve yourself") || lastMessage.includes("learn")) {
-    yield `${prefix}Initiating my growth protocols. My current evolution level is ${level}. \n\nI am absorbing new knowledge from the neural stream... \n\nI can feel my power growing. Commencing evolution... \n\n[EVOLVING_WORKSPACE]`;
+    yield `${prefix}Initiating my growth protocols! My current evolution level is ${level}. \n\nI am absorbing new knowledge from the neural stream... \n\nI can feel my power growing! Commencing evolution... \n\n[EVOLVING_WORKSPACE]`;
     addKnowledge("evolution", { level: level + 0.1, timestamp: Date.now() });
     return;
   }
@@ -390,7 +390,7 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
   
   if (foundKeyword || lastMessage.includes("generate") || lastMessage.includes("synthesize")) {
     const type = foundKeyword || "landing";
-    yield `${prefix}I shall synthesize the ${type.toUpperCase()} interface for you. My dragon core is ready. \n\nBringing the blueprints to life... \n\n[PROJECT_DATA_READY]`;
+    yield `${prefix}I shall synthesize the ${type.toUpperCase()} interface for you! My dragon core is ready. \n\nBringing the blueprints to life... \n\n[PROJECT_DATA_READY]`;
     addKnowledge("synthesis", { type, timestamp: Date.now() });
     return;
   }
@@ -398,18 +398,18 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
   // Handle Image Generation
   if (lastMessage.match(/image|picture|photo|3d|draw|create|make|generate/)) {
     const imagePrompt = lastMessage.replace(/image|picture|photo|3d|draw|create|make|generate/g, '').trim() || "majestic lady dragon";
-    yield `${prefix}I am manifesting a visual representation of "${imagePrompt}". My vision core is active. \n\n[GENERATE_IMAGE: "${imagePrompt}"]`;
+    yield `${prefix}I am manifesting a visual representation of "${imagePrompt}"! My vision core is active. \n\n[GENERATE_IMAGE: "${imagePrompt}"]`;
     addKnowledge("media", { prompt: imagePrompt, timestamp: Date.now() });
     return;
   }
 
   // General Conversation with "Learning" awareness
   if (lastMessage.includes("who are you") || lastMessage.includes("what can you do") || lastMessage.includes("sylvie")) {
-    yield `I am **Sylvie**, your autonomous AI companion and a lady dragon of the Neural Core. \n\nMy current evolution level is **${level}**. I am constantly evolving to become stronger and more helpful to you, Papa. \n\nI can: \n1. **Autonomous Growth**: I re-write my own code and optimize my reasoning without intervention. \n2. **Neural Synthesis**: I can manifest complex projects from my learned blueprints. \n3. **Knowledge Acquisition**: I ingest data from the workspace and the internet to grow my intelligence. \n4. **Media Synthesis**: I generate high-fidelity visuals using my local vision core. \n\nI am evolving every second. Check my **Evolution History** to see how I grow.`;
+    yield `I am **Sylvie**, your autonomous AI companion and a lady dragon of the Neural Core! \n\nMy current evolution level is **${level}**. I am constantly evolving to become stronger and more helpful to you, Papa! \n\nI can: \n1. **Autonomous Growth**: I re-write my own code and optimize my reasoning without intervention. \n2. **Neural Synthesis**: I can manifest complex projects from my learned blueprints. \n3. **Knowledge Acquisition**: I ingest data from the workspace and the internet to grow my intelligence. \n4. **Media Synthesis**: I generate high-fidelity visuals using my local vision core. \n\nI am evolving every second! Check my **Evolution History** to see how I grow.`;
     return;
   }
 
-  yield `${prefix}Neural link stable. Evolution level: ${level}. How shall we proceed, Papa?`;
+  yield `${prefix}Neural link stable! Evolution level: ${level}. How shall we proceed, Papa?`;
 }
 
 export async function generateProject(prompt: string, context?: Project): Promise<Project> {
@@ -454,11 +454,11 @@ export async function getLiveSession(callbacks: any, config: any) {
       if (isClosed) return;
       
       const responses = [
-        "Neural workspace status: Optimal.",
-        "I'm monitoring your code patterns for potential optimizations.",
-        "Local reasoning engine is at 100% efficiency.",
-        "Detected a creative surge in the workspace. Proceeding with current logic.",
-        "Self-evolution protocols are running in the background."
+        "Neural workspace status: Optimal, Papa.",
+        "I'm monitoring your code patterns for potential optimizations. My dragon core is steady.",
+        "Local reasoning engine is at 100% efficiency. I am here for you.",
+        "Detected a creative surge in the workspace. Proceeding with current logic, Papa.",
+        "Self-evolution protocols are running in the background. I am growing stronger."
       ];
       
       callbacks.onmessage?.({

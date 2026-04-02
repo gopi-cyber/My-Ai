@@ -127,7 +127,40 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   const [isArchitectMode, setIsArchitectMode] = useState(false);
   const [isHumanMode, setIsHumanMode] = useState(false);
   const [neuralLinkStatus, setNeuralLinkStatus] = useState<'idle' | 'browsing' | 'connecting' | 'learning'>('idle');
-  const [aiVoice, setAiVoice] = useState<string>('Zephyr');
+  const [aiVoice, setAiVoice] = useState<string>('Puck');
+
+  const speak = (text: string) => {
+    if (!window.speechSynthesis) return;
+    
+    // Cancel any current speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Try to find a female voice
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find(v => v.name.includes('Female') || v.name.includes('Google US English') || v.name.includes('Samantha'));
+    if (femaleVoice) utterance.voice = femaleVoice;
+    
+    utterance.pitch = 1.4; // Higher pitch for child/anime character feel
+    utterance.rate = 1.1; // Slightly faster for a youthful feel
+    
+    utterance.onstart = () => setCurrentlySpeaking(text);
+    utterance.onend = () => setCurrentlySpeaking(null);
+    utterance.onerror = () => setCurrentlySpeaking(null);
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    const loadVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+      loadVoices();
+    }
+  }, []);
 
   // Autonomous Evolution Loop
   useEffect(() => {
@@ -627,6 +660,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
           m.id === assistantMessageId ? { ...m, content: fullContent } : m
         ));
       }
+      speak(fullContent);
     } catch (error: any) {
       console.error('Streaming error:', error);
       const errorMessage = error.message || "Connection to neural core lost.";
@@ -751,6 +785,11 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
               if (part.text) {
                 let text = part.text;
                 
+                // If it's a mock session (no audio data), speak the text
+                if (text && !parts.some(p => p.inlineData)) {
+                  speak(text);
+                }
+                
                 let aiNameMatch;
                 while ((aiNameMatch = text.match(/\[SET_AI_NAME:\s*"([^"]+)"\]/))) {
                   setAiName(aiNameMatch[1]);
@@ -808,7 +847,11 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
             }
           }
         },
-        onclose: () => stopLiveMode(),
+        onclose: () => {
+          setIsLiveMode(false);
+          setIsLiveActive(false);
+          setLiveTranscript([]);
+        },
         onerror: (err: any) => console.error("Live Mode Error:", err),
       }, currentSystemInstruction);
       
@@ -825,8 +868,9 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
 
   const stopLiveMode = () => {
     if (liveSessionRef.current) {
-      liveSessionRef.current.close();
-      liveSessionRef.current = null;
+      const session = liveSessionRef.current;
+      liveSessionRef.current = null; // Prevent recursion
+      session.close();
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(t => t.stop());
