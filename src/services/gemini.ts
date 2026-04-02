@@ -8,13 +8,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 const getApiKey = () => {
   // In AI Studio Build, the key is provided via environment variables.
   // We use a fallback to ensure the app doesn't crash if the key is missing.
-  return process.env.GEMINI_API_KEY || "";
+  return (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || "";
 };
-
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 // Fallback logic for when the API key is missing or the service is unavailable
 const isAiAvailable = () => !!getApiKey();
+
+const getAi = () => {
+  return new GoogleGenAI({ apiKey: getApiKey() });
+};
 
 const KNOWLEDGE_KEY = "NEURAL_KNOWLEDGE_GRAPH";
 const EVOLUTION_KEY = "NEURAL_EVOLUTION_LEVEL";
@@ -115,7 +117,7 @@ export async function runNeuralResearch(learnedKnowledge: string[]): Promise<{ f
     Check my current knowledge to avoid duplicates: ${learnedKnowledge.join(', ')}.
     Return a JSON object with: { "feature": "name", "description": "deep explanation", "sourceUrl": "url" }`;
 
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: "gemini-3-flash-preview",
       contents: researchPrompt,
       config: {
@@ -143,7 +145,7 @@ export async function runAutonomousEvolution(): Promise<EvolutionEntry | null> {
   }
   
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: "gemini-3-flash-preview",
       contents: "Perform an autonomous neural evolution cycle. Identify a technical optimization or a new UI pattern to learn. Return a JSON object with: { \"type\": \"CODE_PATCH\" | \"KNOWLEDGE_ACQUISITION\" | \"SENSOR_SYNC\" | \"WEB_CRAWL\", \"description\": \"short title\", \"details\": \"deep technical explanation\" }",
       config: {
@@ -189,7 +191,7 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
       parts: [{ text: m.content }]
     }));
 
-    const response = await ai.models.generateContentStream({
+    const response = await getAi().models.generateContentStream({
       model: "gemini-3-flash-preview",
       contents,
       config: {
@@ -210,7 +212,7 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
 
 export async function generateProject(prompt: string, context?: Project): Promise<Project> {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Synthesize a full web project based on this request: "${prompt}". 
       Return a JSON object with: { "name": "string", "description": "string", "html": "string", "css": "string", "js": "string" }. 
@@ -252,7 +254,7 @@ export async function generateProject(prompt: string, context?: Project): Promis
 
 export async function generateCode(prompt: string, type: 'html' | 'css' | 'js' | 'python', context?: Project): Promise<string> {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Generate ${type.toUpperCase()} code for: "${prompt}". 
       ${context ? `Context: ${JSON.stringify(context)}` : ''}
@@ -281,7 +283,7 @@ export async function generateImageFromPrompt(prompt: string): Promise<string> {
 
 export async function evolveApp(prompt: string, currentCode: string): Promise<string> {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Evolve this code based on: "${prompt}". 
       Current Code:
