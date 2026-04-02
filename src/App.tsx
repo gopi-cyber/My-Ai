@@ -199,7 +199,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
             .join('')
             .toLowerCase();
           
-          if (transcript.includes("sylvie")) {
+          if (transcript.includes("sylvie") || transcript.includes("silvie")) {
             recognition.stop();
             toast.success(`${aiName} is listening...`, {
               icon: <Sparkles className="w-4 h-4 text-blue-400 animate-pulse" />
@@ -823,16 +823,26 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
         const toastId = toast.loading(`Synthesizing ${themeName} UI theme...`);
         try {
           const styles = await generateCode(`Generate CSS variables or overrides to change the app's UI to a "${themeName}" style. Return ONLY the CSS.`, 'css');
-          setCustomStyles(prev => prev + "\n" + styles);
-          toast.success(`${themeName} UI theme updated.`, { id: toastId });
-          setMessages(prev => prev.map(m => 
-            m.id === assistantMessageId ? { ...m, content: `I have updated my UI theme to ${themeName}. How does it look, Papa?` } : m
-          ));
-          setIsStreaming(false);
-          return;
+          if (styles) {
+            setCustomStyles(prev => prev + "\n" + styles);
+            toast.success(`${themeName} UI theme updated.`, { id: toastId });
+            const assistantResponse = `I have updated my UI theme to ${themeName}. How does it look, Papa?`;
+            setMessages(prev => prev.map(m => 
+              m.id === assistantMessageId ? { ...m, content: assistantResponse } : m
+            ));
+            if (isAutoSpeakEnabled) speak(assistantResponse);
+          } else {
+            throw new Error("No styles generated");
+          }
         } catch (err) {
           toast.error("Theme change failed.", { id: toastId });
+          setMessages(prev => prev.map(m => 
+            m.id === assistantMessageId ? { ...m, content: "I'm sorry Papa, I couldn't synthesize that theme right now." } : m
+          ));
+        } finally {
+          setIsStreaming(false);
         }
+        return;
       }
 
       let fullContent = '';
@@ -1558,7 +1568,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                   </div>
                   <div className="w-full h-64 bg-background border border-border rounded-xl p-2 text-[10px] text-foreground overflow-y-auto space-y-2 font-mono">
                     {evolutionHistory.length === 0 ? (
-                      <div className="text-muted-foreground italic p-2">Waiting for first autonomous update...</div>
+                      <div className="text-muted-foreground italic p-2">Waiting for first autonomous update or neural research...</div>
                     ) : (
                       evolutionHistory.map((evo, i) => (
                         <div key={evo.id} className="p-2 bg-muted/30 border border-border/50 rounded-lg space-y-1">
