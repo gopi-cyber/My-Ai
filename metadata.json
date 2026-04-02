@@ -1,0 +1,8 @@
+{
+  "name": "Antigravity AI",
+  "description": "A high-performance AI agent powered by Gemini 3.1, featuring multimodal capabilities and a technical interface.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
