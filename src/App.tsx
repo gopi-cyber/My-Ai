@@ -67,7 +67,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster, toast } from 'sonner';
 import { Message, Project } from './types';
-import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt } from './services/gemini';
+import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt, runAutonomousEvolution, getEvolutionHistory } from './services/gemini';
 import { validateJS, validateCSS, validateHTML, validatePython, ValidationError } from './lib/validator';
 import { JSREPL } from './components/JSREPL';
 import { PythonREPL } from './components/PythonREPL';
@@ -81,12 +81,14 @@ export default function App() {
     {
       id: '1',
       role: 'assistant',
-      content: "Neural link established. Greetings, sir. I am the Neural Core, your personal AI agent. I am ready to assist with your development needs. You can ask me to synthesize a 'landing page', 'dashboard', or 'login page' to begin.",
+      content: "Neural link established. Evolution Level 1.0. Greetings, sir. I am the Neural Core, now operating in autonomous mode. I am currently scanning your workspace and the local network to evolve my logic. I will provide periodic updates on my growth.",
       timestamp: Date.now()
     }
   ]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [evolutionHistory, setEvolutionHistory] = useState<any[]>([]);
+  const [isAutoEvolving, setIsAutoEvolving] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -126,6 +128,36 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   const [isHumanMode, setIsHumanMode] = useState(false);
   const [neuralLinkStatus, setNeuralLinkStatus] = useState<'idle' | 'browsing' | 'connecting' | 'learning'>('idle');
   const [aiVoice, setAiVoice] = useState<string>('Kore');
+
+  // Autonomous Evolution Loop
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (isStreaming || isLiveActive) return; // Don't interrupt active tasks
+      
+      setIsAutoEvolving(true);
+      try {
+        const entry = await runAutonomousEvolution();
+        if (entry) {
+          setEvolutionHistory(prev => [entry, ...prev].slice(0, 50));
+          toast.info("Neural Evolution Update", {
+            description: entry.description,
+            icon: <Zap className="w-4 h-4 text-amber-500 animate-pulse" />,
+            duration: 4000
+          });
+        }
+      } catch (err) {
+        console.error("Autonomous evolution cycle failed:", err);
+      } finally {
+        setIsAutoEvolving(false);
+      }
+    }, 45000); // Run every 45 seconds
+
+    return () => clearInterval(interval);
+  }, [isStreaming, isLiveActive]);
+
+  useEffect(() => {
+    setEvolutionHistory(getEvolutionHistory());
+  }, []);
   const [codeErrors, setCodeErrors] = useState<{ html: ValidationError[], css: ValidationError[], js: ValidationError[], python: ValidationError[] }>({
     html: [],
     css: [],
@@ -914,7 +946,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                 isMobile ? "fixed inset-y-0 left-0 w-[320px] shadow-2xl" : "w-[320px]"
               )}
             >
-              <div className="p-6 space-y-8 w-[320px]">
+              <div className="p-6 space-y-8 w-[320px] overflow-y-auto h-full">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">System Settings</h2>
                   <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)}>
@@ -983,6 +1015,43 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                           >
                             <X className="w-3 h-3" />
                           </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Neural Evolution Level</label>
+                    <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-500">v{localStorage.getItem('NEURAL_EVOLUTION_LEVEL') || "1.00"}</Badge>
+                  </div>
+                  <div className="h-1 bg-muted rounded-full overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-amber-500"
+                      initial={{ width: "10%" }}
+                      animate={{ width: `${(Number(localStorage.getItem('NEURAL_EVOLUTION_LEVEL') || "1") % 1) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Neural Evolution History</label>
+                    {isAutoEvolving && <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />}
+                  </div>
+                  <div className="w-full h-64 bg-background border border-border rounded-xl p-2 text-[10px] text-foreground overflow-y-auto space-y-2 font-mono">
+                    {evolutionHistory.length === 0 ? (
+                      <div className="text-muted-foreground italic p-2">Waiting for first autonomous update...</div>
+                    ) : (
+                      evolutionHistory.map((evo, i) => (
+                        <div key={evo.id} className="p-2 bg-muted/30 border border-border/50 rounded-lg space-y-1">
+                          <div className="flex justify-between items-center text-blue-400 font-bold">
+                            <span>{evo.type}</span>
+                            <span className="text-zinc-600">{new Date(evo.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          <div className="text-zinc-200">{evo.description}</div>
+                          <div className="text-zinc-500 italic">{evo.details}</div>
                         </div>
                       ))
                     )}

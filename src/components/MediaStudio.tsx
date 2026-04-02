@@ -53,7 +53,7 @@ export function MediaStudio() {
       
       setResultUrl(url);
       setResultType('image');
-      toast.success("Image synthesized locally.");
+      toast.success("Image synthesized by Neural Core.");
     } catch (error: any) {
       console.error("Image generation error:", error);
       toast.error(error.message || "Failed to generate image.");

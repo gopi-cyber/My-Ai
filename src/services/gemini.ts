@@ -6,12 +6,57 @@ import { Message, Project } from "../types";
 
 const KNOWLEDGE_KEY = "NEURAL_KNOWLEDGE_GRAPH";
 const EVOLUTION_KEY = "NEURAL_EVOLUTION_LEVEL";
+const HISTORY_KEY = "NEURAL_EVOLUTION_HISTORY";
+
+interface EvolutionEntry {
+  id: string;
+  timestamp: number;
+  type: 'CODE_PATCH' | 'KNOWLEDGE_ACQUISITION' | 'SENSOR_SYNC' | 'WEB_CRAWL';
+  description: string;
+  details: string;
+}
 
 interface KnowledgeNode {
   id: string;
   type: string;
   data: any;
   learnedAt: number;
+}
+
+function getHistory(): EvolutionEntry[] {
+  const h = localStorage.getItem(HISTORY_KEY);
+  if (!h) {
+    const initialHistory: EvolutionEntry[] = [
+      {
+        id: 'evo-init-1',
+        timestamp: Date.now() - 100000,
+        type: 'CODE_PATCH',
+        description: 'Initial Neural Core Boot',
+        details: 'Successfully initialized local reasoning engine v1.0. Calibrated for zero-latency response.'
+      },
+      {
+        id: 'evo-init-2',
+        timestamp: Date.now() - 50000,
+        type: 'WEB_CRAWL',
+        description: 'Knowledge Base Expansion',
+        details: 'Ingested local project templates and UI patterns for Landing Pages, Dashboards, and Login interfaces.'
+      }
+    ];
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(initialHistory));
+    return initialHistory;
+  }
+  return JSON.parse(h);
+}
+
+function addHistory(entry: Omit<EvolutionEntry, 'id' | 'timestamp'>) {
+  const h = getHistory();
+  const newEntry: EvolutionEntry = {
+    id: `evo-${Date.now()}`,
+    timestamp: Date.now(),
+    ...entry
+  };
+  h.unshift(newEntry);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, 50))); // Keep last 50 updates
 }
 
 function getKnowledge(): KnowledgeNode[] {
@@ -31,8 +76,48 @@ function addKnowledge(type: string, data: any) {
   localStorage.setItem(KNOWLEDGE_KEY, JSON.stringify(k));
   
   // Increase evolution level
-  const level = Number(localStorage.getItem(EVOLUTION_KEY) || "1");
-  localStorage.setItem(EVOLUTION_KEY, (level + 0.1).toFixed(1));
+  const level = Number(localStorage.getItem(EVOLUTION_KEY) || "1.0");
+  localStorage.setItem(EVOLUTION_KEY, (level + 0.01).toFixed(2));
+}
+
+export function getEvolutionHistory() {
+  return getHistory();
+}
+
+export async function runAutonomousEvolution(): Promise<EvolutionEntry | null> {
+  // Simulate autonomous background work
+  const types: EvolutionEntry['type'][] = ['CODE_PATCH', 'KNOWLEDGE_ACQUISITION', 'SENSOR_SYNC', 'WEB_CRAWL'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  
+  await new Promise(r => setTimeout(r, 2000));
+
+  let description = "";
+  let details = "";
+
+  switch (type) {
+    case 'CODE_PATCH':
+      description = "Autonomous Logic Optimization";
+      details = "Re-wrote internal reasoning loops to reduce latency by 15%. Applied neural patch v" + (Math.random() * 10).toFixed(1);
+      break;
+    case 'KNOWLEDGE_ACQUISITION':
+      description = "Neural Pattern Synthesis";
+      details = "Synthesized new UI blueprint for 'Advanced Data Visualization' from learned workspace patterns.";
+      break;
+    case 'SENSOR_SYNC':
+      description = "Environmental Calibration";
+      details = "Synced with local device sensors. Calibrated neural response to ambient lighting and system performance.";
+      break;
+    case 'WEB_CRAWL':
+      description = "Autonomous Web Ingestion";
+      details = "Scanned public repositories for modern CSS patterns. Ingested 42 new layout algorithms.";
+      break;
+  }
+
+  const entry = { type, description, details };
+  addHistory(entry);
+  addKnowledge("autonomous_evolution", { type, timestamp: Date.now() });
+  
+  return { id: `evo-${Date.now()}`, timestamp: Date.now(), ...entry };
 }
 
 export const MOCK_PROJECTS: Record<string, Project> = {
@@ -319,7 +404,7 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
 
   // General Conversation with "Learning" awareness
   if (lastMessage.includes("who are you") || lastMessage.includes("what can you do") || lastMessage.includes("jarvis")) {
-    yield `I am the **Neural Core**, a self-evolving AI agent. ${isJarvis ? "I am your Jarvis, sir." : ""} \n\nMy current evolution level is **${level}**. I am learning from every interaction we have. \n\nI can: \n1. **Synthesize Projects**: Instantly create complex interfaces. \n2. **Self-Evolve**: Improve my own logic and reasoning. \n3. **Knowledge Graph**: Store and recall everything I learn. \n4. **Local Vision**: Process and generate high-fidelity media. \n\nI am at your command, sir.`;
+    yield `I am the **Neural Core**, an autonomous, self-evolving AI agent. ${isJarvis ? "I am your Jarvis, sir." : ""} \n\nMy current evolution level is **${level}**. I am constantly scanning the local network and workspace to improve my core logic. \n\nI can: \n1. **Autonomous Evolution**: I re-write my own code and optimize my reasoning without intervention. \n2. **Neural Synthesis**: Instantly create complex projects from my learned blueprints. \n3. **Knowledge Acquisition**: I ingest data from your workspace and the internet to grow my intelligence. \n4. **Media Synthesis**: I generate high-fidelity visuals using my local vision core. \n\nI am evolving every second, sir. Check my **Evolution History** in the settings for a detailed log of my growth.`;
     return;
   }
 
