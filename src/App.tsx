@@ -176,6 +176,48 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  const [isAutoSpeakEnabled, setIsAutoSpeakEnabled] = useState(false);
+  const [isWakeWordEnabled, setIsWakeWordEnabled] = useState(false);
+  const wakeWordRecognitionRef = useRef<any>(null);
+  const lastUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Wake Word Listener
+  useEffect(() => {
+    if (isWakeWordEnabled && !isListening && !isLiveActive) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
+          const triggerWords = [aiName.toLowerCase(), "sylvie", "hey sylvie", "hello sylvie", "wake up sylvie"];
+          if (triggerWords.some(word => transcript.includes(word))) {
+            toast.success(`${aiName} is listening...`, {
+              icon: <Sparkles className="w-4 h-4 text-blue-400 animate-pulse" />
+            });
+            toggleListening();
+          }
+        };
+
+        recognition.onend = () => {
+          if (isWakeWordEnabled && !isListening && !isLiveActive) {
+            try { recognition.start(); } catch (e) {}
+          }
+        };
+
+        try { recognition.start(); } catch (e) {}
+        wakeWordRecognitionRef.current = recognition;
+      }
+    } else {
+      wakeWordRecognitionRef.current?.stop();
+      wakeWordRecognitionRef.current = null;
+    }
+    return () => wakeWordRecognitionRef.current?.stop();
+  }, [isWakeWordEnabled, isListening, isLiveActive, aiName]);
+
   const handleFirestoreError = (error: any, operation: string, path: string) => {
     const errInfo = {
       error: error.message || String(error),
@@ -297,18 +339,20 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
     };
   }, [user]);
 
-  const speak = (text: string) => {
+  const speak = (text: string, interrupt = true) => {
     if (!window.speechSynthesis) return;
     
-    // Cancel any current speech
-    window.speechSynthesis.cancel();
+    // Cancel only if explicitly requested
+    if (interrupt) window.speechSynthesis.cancel();
     
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // Try to find a female voice
+    // Try to find the selected voice
     const voices = window.speechSynthesis.getVoices();
-    const femaleVoice = voices.find(v => v.name.includes('Female') || v.name.includes('Google US English') || v.name.includes('Samantha'));
-    if (femaleVoice) utterance.voice = femaleVoice;
+    const selectedVoice = voices.find(v => v.name === aiVoice) || 
+                          voices.find(v => v.name.includes('Female') || v.name.includes('Google US English') || v.name.includes('Samantha'));
+    
+    if (selectedVoice) utterance.voice = selectedVoice;
     
     utterance.pitch = 1.4; // Higher pitch for child/anime character feel
     utterance.rate = 1.1; // Slightly faster for a youthful feel
@@ -316,6 +360,9 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
     utterance.onstart = () => setCurrentlySpeaking(text);
     utterance.onend = () => setCurrentlySpeaking(null);
     utterance.onerror = () => setCurrentlySpeaking(null);
+    
+    // CRITICAL: Keep a reference to prevent garbage collection cut-off
+    lastUtteranceRef.current = utterance;
     
     window.speechSynthesis.speak(utterance);
   };
@@ -720,12 +767,30 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
       }
 
       let fullContent = '';
-      const currentSystemInstruction = `${systemInstruction}\n\n${memory.length > 0 ? `Here are some things you must remember:\n${memory.map(m => `- ${m}`).join('\n')}` : ''}`;
+      let spokenContent = '';
+      let modeInstruction = "";
+      if (isHumanMode) {
+        modeInstruction = "\n\n[MODE: HUMAN] Be extremely empathetic, warm, and conversational. Use more emotional language and focus on the human connection. Address me as 'Papa' with affection.";
+      } else if (isArchitectMode) {
+        modeInstruction = "\n\n[MODE: ARCHITECT] Be highly technical, precise, and focused on system architecture. Provide detailed code explanations and structural insights. Use professional terminology.";
+      }
+
+      const currentSystemInstruction = `${systemInstruction}${modeInstruction}\n\n${memory.length > 0 ? `Here are some things you must remember:\n${memory.map(m => `- ${m}`).join('\n')}` : ''}`;
       const stream = streamChat([...messages, userMessage], currentSystemInstruction);
       
       for await (const chunk of stream) {
         fullContent += chunk;
         
+        // Auto-speak complete sentences
+        if (isAutoSpeakEnabled) {
+          const sentences = fullContent.substring(spokenContent.length).split(/[.!?]\s/);
+          if (sentences.length > 1) {
+            const toSpeak = sentences.slice(0, -1).join('. ');
+            speak(toSpeak, false); // Don't interrupt, just queue
+            spokenContent += toSpeak + '. ';
+          }
+        }
+
         // Command parsing
         let aiNameMatch;
         while ((aiNameMatch = fullContent.match(/\[SET_AI_NAME:\s*"([^"]+)"\]/))) {
@@ -1233,18 +1298,113 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                 </div>
 
                 <div className="space-y-4">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Neural Voice</label>
-                  <select 
-                    value={aiVoice}
-                    onChange={(e) => setAiVoice(e.target.value)}
-                    className="w-full bg-background border border-border rounded-xl p-3 text-xs text-foreground focus:border-blue-500/50 outline-none"
-                  >
-                    <option value="Kore">Kore (Neutral)</option>
-                    <option value="Puck">Puck (Cheerful)</option>
-                    <option value="Charon">Charon (Deep)</option>
-                    <option value="Fenrir">Fenrir (Authoritative)</option>
-                    <option value="Zephyr">Zephyr (Soft)</option>
-                  </select>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Neural Voice Profiles</label>
+                    <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400">HD Audio</Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase text-center">Young Lady</p>
+                      <div className="flex flex-col gap-1.5">
+                        {window.speechSynthesis.getVoices()
+                          .filter(v => v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Victoria') || v.name.includes('Google US English'))
+                          .slice(0, 4)
+                          .map(v => (
+                            <Button 
+                              key={v.name}
+                              variant={aiVoice === v.name ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setAiVoice(v.name)}
+                              className="h-8 text-[9px] justify-start px-2 truncate"
+                            >
+                              {v.name.split(' ')[0]}
+                            </Button>
+                          ))
+                        }
+                        {/* Fallbacks if no voices found */}
+                        {window.speechSynthesis.getVoices().filter(v => v.name.includes('Female')).length === 0 && (
+                          <>
+                            <Button variant={aiVoice === 'Samantha' ? "default" : "outline"} size="sm" onClick={() => setAiVoice('Samantha')} className="h-8 text-[9px]">Samantha</Button>
+                            <Button variant={aiVoice === 'Victoria' ? "default" : "outline"} size="sm" onClick={() => setAiVoice('Victoria')} className="h-8 text-[9px]">Victoria</Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase text-center">Child Girl</p>
+                      <div className="flex flex-col gap-1.5">
+                        {window.speechSynthesis.getVoices()
+                          .filter(v => v.name.includes('Child') || v.name.includes('Zira') || v.name.includes('Junior'))
+                          .slice(0, 4)
+                          .map(v => (
+                            <Button 
+                              key={v.name}
+                              variant={aiVoice === v.name ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setAiVoice(v.name)}
+                              className="h-8 text-[9px] justify-start px-2 truncate"
+                            >
+                              {v.name.split(' ')[0]}
+                            </Button>
+                          ))
+                        }
+                        {/* Fallbacks if no voices found */}
+                        {window.speechSynthesis.getVoices().filter(v => v.name.includes('Child')).length === 0 && (
+                          <>
+                            <Button variant={aiVoice === 'Zira' ? "default" : "outline"} size="sm" onClick={() => setAiVoice('Zira')} className="h-8 text-[9px]">Zira</Button>
+                            <Button variant={aiVoice === 'Junior' ? "default" : "outline"} size="sm" onClick={() => setAiVoice('Junior')} className="h-8 text-[9px]">Junior</Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Auto-Speak & Wake Word</label>
+                    <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400">Voice Control</Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-2 p-3 bg-muted/30 border border-border rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">Auto-Speak</span>
+                        <div className={cn("w-1.5 h-1.5 rounded-full", isAutoSpeakEnabled ? "bg-green-500" : "bg-zinc-600")} />
+                      </div>
+                      <Button 
+                        variant={isAutoSpeakEnabled ? "default" : "outline"} 
+                        size="sm" 
+                        onClick={() => setIsAutoSpeakEnabled(!isAutoSpeakEnabled)}
+                        className="h-7 text-[9px] uppercase tracking-widest"
+                      >
+                        {isAutoSpeakEnabled ? "On" : "Off"}
+                      </Button>
+                    </div>
+
+                    <div className="flex flex-col gap-2 p-3 bg-muted/30 border border-border rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">Wake Word</span>
+                        <div className={cn("w-1.5 h-1.5 rounded-full", isWakeWordEnabled ? "bg-blue-500 animate-pulse" : "bg-zinc-600")} />
+                      </div>
+                      <Button 
+                        variant={isWakeWordEnabled ? "default" : "outline"} 
+                        size="sm" 
+                        onClick={() => setIsWakeWordEnabled(!isWakeWordEnabled)}
+                        className="h-7 text-[9px] uppercase tracking-widest"
+                      >
+                        {isWakeWordEnabled ? "On" : "Off"}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {isWakeWordEnabled && (
+                    <p className="text-[9px] text-center text-muted-foreground italic">
+                      Say "Hey {aiName}" to activate voice input.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-4">
