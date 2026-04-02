@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Image as ImageIcon, Video, Upload, X, Download } from 'lucide-react';
+import { GoogleGenAI } from '@google/genai';
 import { toast } from 'sonner';
 
 export function MediaStudio() {
@@ -35,19 +36,75 @@ export function MediaStudio() {
   };
 
   const generateImage = async () => {
-    toast.info("Cloud image generation is disabled in Pure Local mode. Local model integration pending.");
+    if (!prompt && !imageBase64) {
+      toast.error("Please provide a prompt or an image.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setResultUrl(null);
+    setResultType(null);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const parts: any[] = [];
+      if (imageBase64) {
+        const base64Data = imageBase64.split(',')[1];
+        const mimeType = imageBase64.split(';')[0].split(':')[1];
+        parts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType,
+          }
+        });
+      }
+      if (prompt) {
+        parts.push({ text: prompt });
+      }
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts },
+        config: {
+          imageConfig: {
+            aspectRatio: "1:1"
+          }
+        }
+      });
+
+      let foundImage = false;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          const url = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+          setResultUrl(url);
+          setResultType('image');
+          foundImage = true;
+          break;
+        }
+      }
+      
+      if (!foundImage) {
+        toast.error("No image generated.");
+      }
+    } catch (error: any) {
+      console.error("Image generation error:", error);
+      toast.error(error.message || "Failed to generate image.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const generateVideo = async () => {
-    toast.error("Video generation requires a cloud sub-processor, which is disabled for privacy.");
+    toast.error("Video generation requires a paid API key, which you have opted out of.");
   };
 
   return (
     <div className="flex flex-col h-full bg-background p-6 overflow-y-auto">
       <div className="max-w-4xl mx-auto w-full space-y-8">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight mb-2">Media Studio (Local)</h2>
-          <p className="text-muted-foreground">Privacy-first media interface. Cloud processing is disabled.</p>
+          <h2 className="text-2xl font-bold tracking-tight mb-2">Media Studio</h2>
+          <p className="text-muted-foreground">Generate images and videos from prompts and reference images.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -59,7 +116,6 @@ export function MediaStudio() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 className="h-12"
-                disabled
               />
             </div>
 
@@ -103,7 +159,7 @@ export function MediaStudio() {
                 onClick={generateImage}
                 disabled={isGenerating}
               >
-                <ImageIcon className="h-5 w-5" />
+                {isGenerating && resultType !== 'video' ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
                 Generate Image
               </Button>
               <Button 
@@ -112,17 +168,41 @@ export function MediaStudio() {
                 onClick={generateVideo}
                 disabled={isGenerating}
               >
-                <Video className="h-5 w-5" />
+                {isGenerating && resultType !== 'image' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Video className="h-5 w-5" />}
                 Generate Video
               </Button>
             </div>
           </div>
 
           <div className="bg-muted/30 border border-border rounded-xl p-6 flex flex-col items-center justify-center min-h-[400px] relative">
-            <div className="text-center text-muted-foreground">
-              <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-20" />
-              <p>Neural core is in local mode. Image synthesis is currently limited to local models.</p>
-            </div>
+            {isGenerating ? (
+              <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
+                <p className="animate-pulse">Generating your media... This may take a few minutes.</p>
+              </div>
+            ) : resultUrl ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                {resultType === 'image' ? (
+                  <img src={resultUrl} alt="Generated" className="max-w-full max-h-[500px] object-contain rounded-lg shadow-lg" />
+                ) : (
+                  <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[500px] rounded-lg shadow-lg" />
+                )}
+                <Button variant="outline" className="gap-2" onClick={() => {
+                  const a = document.createElement('a');
+                  a.href = resultUrl;
+                  a.download = `generated-${resultType}-${Date.now()}.${resultType === 'image' ? 'png' : 'mp4'}`;
+                  a.click();
+                }}>
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground">
+                <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                <p>Your generated media will appear here.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

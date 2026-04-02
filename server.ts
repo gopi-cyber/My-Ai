@@ -3,7 +3,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import { createProxyMiddleware } from "http-proxy-middleware";
 import { simpleGit } from "simple-git";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,77 +15,6 @@ async function startServer() {
   app.use(express.json());
 
   const git = simpleGit();
-
-  // Ollama Proxy
-  app.use(
-    "/api/ollama",
-    createProxyMiddleware({
-      target: "http://localhost:11434",
-      changeOrigin: true,
-      pathRewrite: {
-        "^/api/ollama": "", // Remove /api/ollama from the forwarded path
-      },
-      on: {
-        error: (err, req, res: any) => {
-          console.error("Ollama Proxy Error:", err.message);
-          if (res.status) {
-            res.status(503).json({ 
-              error: "OLLAMA_OFFLINE",
-              message: "Neural core offline. Verify Ollama is running on localhost:11434."
-            });
-          }
-        },
-      },
-    })
-  );
-
-  // NVIDIA NIM Proxy
-  app.use(
-    "/api/ai/nvidia",
-    createProxyMiddleware({
-      target: "https://integrate.api.nvidia.com/v1",
-      changeOrigin: true,
-      pathRewrite: {
-        "^/api/ai/nvidia": "",
-      },
-      on: {
-        proxyReq: (proxyReq, req: any) => {
-          if (process.env.NVIDIA_API_KEY) {
-            proxyReq.setHeader("Authorization", `Bearer ${process.env.NVIDIA_API_KEY}`);
-          }
-        },
-        error: (err, req, res: any) => {
-          console.error("NVIDIA Proxy Error:", err.message);
-          if (res.status) {
-            res.status(502).json({ error: "NVIDIA_PROXY_ERROR", message: err.message });
-          }
-        },
-      },
-    })
-  );
-
-  // AI Health Check
-  app.get("/api/ai/health", async (req, res) => {
-    const status: any = { ollama: "offline", gemini: "inactive" };
-    
-    // Check Ollama
-    try {
-      const response = await fetch("http://localhost:11434/api/tags");
-      if (response.ok) status.ollama = "online";
-    } catch (e) {}
-
-    // Check Gemini key
-    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "YOUR_API_KEY") {
-      status.gemini = "active";
-    }
-
-    // Check NVIDIA key
-    if (process.env.NVIDIA_API_KEY) {
-      status.nvidia = "active";
-    }
-
-    res.json(status);
-  });
 
   // Git API Endpoints
   app.get("/api/git/status", async (req, res) => {
