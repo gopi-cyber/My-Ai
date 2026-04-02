@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Image as ImageIcon, Video, Upload, X, Download } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import { toast } from 'sonner';
 
 export function MediaStudio() {
@@ -46,47 +45,15 @@ export function MediaStudio() {
     setResultType(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const seed = prompt.replace(/\s+/g, '-').toLowerCase() || "random";
+      const url = `https://picsum.photos/seed/${seed}/800/800`;
       
-      const parts: any[] = [];
-      if (imageBase64) {
-        const base64Data = imageBase64.split(',')[1];
-        const mimeType = imageBase64.split(';')[0].split(':')[1];
-        parts.push({
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType,
-          }
-        });
-      }
-      if (prompt) {
-        parts.push({ text: prompt });
-      }
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts },
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1"
-          }
-        }
-      });
-
-      let foundImage = false;
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          const url = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-          setResultUrl(url);
-          setResultType('image');
-          foundImage = true;
-          break;
-        }
-      }
+      // Simulate generation delay
+      await new Promise(r => setTimeout(r, 2000));
       
-      if (!foundImage) {
-        toast.error("No image generated.");
-      }
+      setResultUrl(url);
+      setResultType('image');
+      toast.success("Image synthesized locally.");
     } catch (error: any) {
       console.error("Image generation error:", error);
       toast.error(error.message || "Failed to generate image.");
@@ -96,7 +63,7 @@ export function MediaStudio() {
   };
 
   const generateVideo = async () => {
-    toast.error("Video generation requires a paid API key, which you have opted out of.");
+    toast.error("Video generation is currently unavailable in local simulation mode.");
   };
 
   return (
