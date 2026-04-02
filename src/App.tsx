@@ -90,7 +90,7 @@ import { validateJS, validateCSS, validateHTML, validatePython, ValidationError 
 import { JSREPL } from './components/JSREPL';
 import { PythonREPL } from './components/PythonREPL';
 import { LiveModeOrb } from './components/LiveModeOrb';
-import { LiveServerMessage } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage } from "@google/genai";
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   constructor(props: any) {
@@ -178,27 +178,40 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
 
   const [isAutoSpeakEnabled, setIsAutoSpeakEnabled] = useState(false);
   const [isWakeWordEnabled, setIsWakeWordEnabled] = useState(false);
+  const [learnedKnowledge, setLearnedKnowledge] = useState<string[]>([]);
   const wakeWordRecognitionRef = useRef<any>(null);
   const lastUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Wake Word Listener
   useEffect(() => {
+    let recognition: any = null;
     if (isWakeWordEnabled && !isListening && !isLiveActive) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
+        recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = false;
+        recognition.interimResults = true; // Use interim for faster response
         recognition.lang = 'en-US';
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
-          const triggerWords = [aiName.toLowerCase(), "sylvie", "hey sylvie", "hello sylvie", "wake up sylvie"];
-          if (triggerWords.some(word => transcript.includes(word))) {
+          const transcript = Array.from(event.results)
+            .map((result: any) => result[0].transcript)
+            .join('')
+            .toLowerCase();
+          
+          if (transcript.includes("sylvie")) {
+            recognition.stop();
             toast.success(`${aiName} is listening...`, {
               icon: <Sparkles className="w-4 h-4 text-blue-400 animate-pulse" />
             });
             toggleListening();
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error === 'not-allowed') {
+            setIsWakeWordEnabled(false);
+            toast.error("Microphone access denied for wake word.");
           }
         };
 
@@ -211,11 +224,13 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
         try { recognition.start(); } catch (e) {}
         wakeWordRecognitionRef.current = recognition;
       }
-    } else {
-      wakeWordRecognitionRef.current?.stop();
-      wakeWordRecognitionRef.current = null;
     }
-    return () => wakeWordRecognitionRef.current?.stop();
+    return () => {
+      if (recognition) {
+        recognition.onend = null;
+        recognition.stop();
+      }
+    };
   }, [isWakeWordEnabled, isListening, isLiveActive, aiName]);
 
   const handleFirestoreError = (error: any, operation: string, path: string) => {
@@ -327,6 +342,9 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
         if (data.uiName) setUiName(data.uiName);
         if (data.aiVoice) setAiVoice(data.aiVoice);
         if (data.memory) setMemory(data.memory);
+        if (data.learnedKnowledge) setLearnedKnowledge(data.learnedKnowledge);
+        if (data.isAutoSpeakEnabled !== undefined) setIsAutoSpeakEnabled(data.isAutoSpeakEnabled);
+        if (data.isWakeWordEnabled !== undefined) setIsWakeWordEnabled(data.isWakeWordEnabled);
       }
     }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}`));
 
@@ -377,36 +395,83 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
     }
   }, []);
 
-  // Autonomous Evolution Loop
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (isStreaming || isLiveActive) return; // Don't interrupt active tasks
-      
-      setIsAutoEvolving(true);
-      try {
-        const entry = await runAutonomousEvolution();
-        if (entry) {
-          if (user) {
-            const entryRef = doc(db, 'users', user.uid, 'evolution_history', entry.id || Date.now().toString());
-            setDoc(entryRef, entry).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}/evolution_history/${entry.id}`));
-          } else {
-            setEvolutionHistory(prev => [entry, ...prev].slice(0, 50));
+  // Autonomous Evolution & Neural Research
+  const runNeuralResearch = async () => {
+    if (!user || isStreaming || isLiveActive) return;
+    setNeuralLinkStatus('browsing');
+    
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const researchPrompt = `Search for the latest trends in AI user interfaces, new features in top AI assistants like Gemini or ChatGPT, and modern web design patterns. 
+      Identify ONE specific feature or UI improvement that I (Sylvie, a lady dragon AI) don't have yet. 
+      Check my current knowledge to avoid duplicates: ${learnedKnowledge.join(', ')}.
+      Return a JSON object with: { "feature": "name", "description": "deep explanation", "sourceUrl": "url" }`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: researchPrompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json"
+        }
+      });
+
+      const research = JSON.parse(response.text || '{}');
+      if (research.feature && !learnedKnowledge.includes(research.feature)) {
+        setNeuralLinkStatus('learning');
+        toast("Neural Research Complete", {
+          description: `I found a new evolution: ${research.feature}. Should I learn it, Papa?`,
+          action: {
+            label: "Approve",
+            onClick: async () => {
+              const newKnowledge = [...learnedKnowledge, research.feature];
+              setLearnedKnowledge(newKnowledge);
+              await setDoc(doc(db, 'users', user.uid), { learnedKnowledge: newKnowledge }, { merge: true });
+              
+              // Simulate evolution based on research
+              const evoToastId = toast.loading(`Evolving neural core with ${research.feature}...`);
+              await new Promise(r => setTimeout(r, 3000));
+              
+              const evolutionEntry = {
+                id: `evo-${Date.now()}`,
+                timestamp: Date.now(),
+                type: 'WEB_CRAWL' as const,
+                description: `Acquired: ${research.feature}`,
+                details: research.description
+              };
+              
+              await addDoc(collection(db, 'users', user.uid, 'evolution_history'), evolutionEntry);
+              toast.success(`Neural core updated with ${research.feature}!`, { id: evoToastId });
+              setNeuralLinkStatus('idle');
+            }
           }
-          toast.info("Neural Evolution Update", {
-            description: entry.description,
-            icon: <Zap className="w-4 h-4 text-amber-500 animate-pulse" />,
-            duration: 4000
+        });
+      } else {
+        setNeuralLinkStatus('idle');
+      }
+    } catch (err) {
+      console.error("Neural research failed:", err);
+      setNeuralLinkStatus('idle');
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      const interval = setInterval(() => {
+        if (Math.random() > 0.6) {
+          runNeuralResearch();
+        } else {
+          runAutonomousEvolution().then(entry => {
+            if (entry) {
+              const entryRef = doc(db, 'users', user.uid, 'evolution_history', entry.id || Date.now().toString());
+              setDoc(entryRef, entry).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}/evolution_history/${entry.id}`));
+            }
           });
         }
-      } catch (err) {
-        console.error("Autonomous evolution cycle failed:", err);
-      } finally {
-        setIsAutoEvolving(false);
-      }
-    }, 45000); // Run every 45 seconds
-
-    return () => clearInterval(interval);
-  }, [isStreaming, isLiveActive]);
+      }, 120000); // Check every 2 minutes
+      return () => clearInterval(interval);
+    }
+  }, [user, learnedKnowledge, isStreaming, isLiveActive]);
 
   useEffect(() => {
     setEvolutionHistory(getEvolutionHistory());
@@ -750,14 +815,18 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
 
     try {
       // Check for theme change request
-      if (messageContent.toLowerCase().includes("change your ui theme") || messageContent.toLowerCase().includes("change theme to")) {
-        const toastId = toast.loading("Synthesizing new UI theme...");
+      const themeMatch = messageContent.toLowerCase().match(/(?:change|update|set|apply) (?:your |the )?ui theme (?:to |as )?(.+)/i) || 
+                         messageContent.toLowerCase().match(/(.+) theme/i);
+      
+      if (themeMatch) {
+        const themeName = themeMatch[1].trim();
+        const toastId = toast.loading(`Synthesizing ${themeName} UI theme...`);
         try {
-          const styles = await generateCode(`Generate CSS variables or overrides to change the app's UI based on this request: "${messageContent}". Return ONLY the CSS.`, 'css');
+          const styles = await generateCode(`Generate CSS variables or overrides to change the app's UI to a "${themeName}" style. Return ONLY the CSS.`, 'css');
           setCustomStyles(prev => prev + "\n" + styles);
-          toast.success("UI theme updated.", { id: toastId });
+          toast.success(`${themeName} UI theme updated.`, { id: toastId });
           setMessages(prev => prev.map(m => 
-            m.id === assistantMessageId ? { ...m, content: "I have updated my UI theme according to your request. How does it look?" } : m
+            m.id === assistantMessageId ? { ...m, content: `I have updated my UI theme to ${themeName}. How does it look, Papa?` } : m
           ));
           setIsStreaming(false);
           return;
@@ -783,11 +852,12 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
         
         // Auto-speak complete sentences
         if (isAutoSpeakEnabled) {
-          const sentences = fullContent.substring(spokenContent.length).split(/[.!?]\s/);
-          if (sentences.length > 1) {
-            const toSpeak = sentences.slice(0, -1).join('. ');
+          const remaining = fullContent.substring(spokenContent.length);
+          const sentenceEnd = remaining.search(/[.!?]\s/);
+          if (sentenceEnd !== -1) {
+            const toSpeak = remaining.substring(0, sentenceEnd + 1);
             speak(toSpeak, false); // Don't interrupt, just queue
-            spokenContent += toSpeak + '. ';
+            spokenContent += toSpeak + ' ';
           }
         }
 
@@ -1282,9 +1352,15 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                       Establish Neural Link
                     </Button>
                   )}
-                  <p className="text-[9px] text-muted-foreground italic px-1">
-                    Linking Sylvie to the cloud core allows her to evolve 24/7 and remember everything across devices.
-                  </p>
+                  <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Info className="w-3 h-3 text-blue-400" />
+                      <p className="text-[9px] font-bold text-blue-400 uppercase tracking-widest">How it works</p>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground leading-relaxed">
+                      Your code is hosted on GitHub/Vercel. The **Neural Link** connects Sylvie to a cloud brain (Firebase) to store her memories, personality, and learned knowledge so she stays persistent even when you're offline.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -1377,7 +1453,11 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                       <Button 
                         variant={isAutoSpeakEnabled ? "default" : "outline"} 
                         size="sm" 
-                        onClick={() => setIsAutoSpeakEnabled(!isAutoSpeakEnabled)}
+                        onClick={() => {
+                          const newVal = !isAutoSpeakEnabled;
+                          setIsAutoSpeakEnabled(newVal);
+                          if (user) setDoc(doc(db, 'users', user.uid), { isAutoSpeakEnabled: newVal }, { merge: true });
+                        }}
                         className="h-7 text-[9px] uppercase tracking-widest"
                       >
                         {isAutoSpeakEnabled ? "On" : "Off"}
@@ -1392,7 +1472,11 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                       <Button 
                         variant={isWakeWordEnabled ? "default" : "outline"} 
                         size="sm" 
-                        onClick={() => setIsWakeWordEnabled(!isWakeWordEnabled)}
+                        onClick={() => {
+                          const newVal = !isWakeWordEnabled;
+                          setIsWakeWordEnabled(newVal);
+                          if (user) setDoc(doc(db, 'users', user.uid), { isWakeWordEnabled: newVal }, { merge: true });
+                        }}
                         className="h-7 text-[9px] uppercase tracking-widest"
                       >
                         {isWakeWordEnabled ? "On" : "Off"}
@@ -1659,8 +1743,12 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
             </div>
             <div className="flex items-center gap-1 ml-4 border-l border-border pl-4 shrink-0">
             <div className="flex items-center gap-1.5 mr-2 px-2 py-1 bg-muted rounded-full border border-border">
-                <Link2 className="w-3 h-3 text-blue-500" />
-                <span className="text-[8px] font-bold uppercase tracking-tighter text-muted-foreground">Neural Link: Active</span>
+                <Link2 className={cn("w-3 h-3 transition-colors", neuralLinkStatus !== 'idle' ? "text-amber-500 animate-pulse" : "text-blue-500")} />
+                <span className="text-[8px] font-bold uppercase tracking-tighter text-muted-foreground">
+                  {neuralLinkStatus === 'idle' ? 'Neural Link: Active' : 
+                   neuralLinkStatus === 'browsing' ? 'Neural Research: Browsing...' : 
+                   neuralLinkStatus === 'learning' ? 'Neural Research: Learning...' : 'Neural Link: Synced'}
+                </span>
               </div>
               <Button 
                 variant="ghost" 
