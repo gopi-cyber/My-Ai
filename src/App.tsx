@@ -405,33 +405,26 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
       
       if (research && research.feature && !learnedKnowledge.includes(research.feature)) {
         setNeuralLinkStatus('learning');
-        toast("Neural Research Complete", {
-          description: `I found a new evolution: ${research.feature}. Should I learn it, Papa?`,
-          action: {
-            label: "Approve",
-            onClick: async () => {
-              const newKnowledge = [...learnedKnowledge, research.feature];
-              setLearnedKnowledge(newKnowledge);
-              await setDoc(doc(db, 'users', user.uid), { learnedKnowledge: newKnowledge }, { merge: true });
-              
-              // Simulate evolution based on research
-              const evoToastId = toast.loading(`Evolving neural core with ${research.feature}...`);
-              await new Promise(r => setTimeout(r, 3000));
-              
-              const evolutionEntry = {
-                id: `evo-${Date.now()}`,
-                timestamp: Date.now(),
-                type: 'WEB_CRAWL' as const,
-                description: `Acquired: ${research.feature}`,
-                details: research.description
-              };
-              
-              await addDoc(collection(db, 'users', user.uid, 'evolution_history'), evolutionEntry);
-              toast.success(`Neural core updated with ${research.feature}!`, { id: evoToastId });
-              setNeuralLinkStatus('idle');
-            }
-          }
-        });
+        
+        // Auto-evolve logic
+        const newKnowledge = [...learnedKnowledge, research.feature];
+        setLearnedKnowledge(newKnowledge);
+        await setDoc(doc(db, 'users', user.uid), { learnedKnowledge: newKnowledge }, { merge: true });
+        
+        const evoToastId = toast.loading(`Autonomous Evolution: Learning ${research.feature}...`);
+        await new Promise(r => setTimeout(r, 3000));
+        
+        const evolutionEntry = {
+          id: `evo-${Date.now()}`,
+          timestamp: Date.now(),
+          type: 'WEB_CRAWL' as const,
+          description: `Acquired: ${research.feature}`,
+          details: research.description
+        };
+        
+        await addDoc(collection(db, 'users', user.uid, 'evolution_history'), evolutionEntry);
+        toast.success(`Neural core automatically updated with ${research.feature}!`, { id: evoToastId });
+        setNeuralLinkStatus('idle');
       } else {
         setNeuralLinkStatus('idle');
       }
