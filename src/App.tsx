@@ -85,12 +85,12 @@ import {
   serverTimestamp,
   User as FirebaseUser
 } from './firebase';
-import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt, runAutonomousEvolution, getEvolutionHistory } from './services/gemini';
+import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt, runAutonomousEvolution, getEvolutionHistory, runNeuralResearch } from './services/gemini';
 import { validateJS, validateCSS, validateHTML, validatePython, ValidationError } from './lib/validator';
 import { JSREPL } from './components/JSREPL';
 import { PythonREPL } from './components/PythonREPL';
 import { LiveModeOrb } from './components/LiveModeOrb';
-import { GoogleGenAI, LiveServerMessage } from "@google/genai";
+import { LiveServerMessage } from "@google/genai";
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   constructor(props: any) {
@@ -396,28 +396,14 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   }, []);
 
   // Autonomous Evolution & Neural Research
-  const runNeuralResearch = async () => {
+  const runNeuralResearchTask = async () => {
     if (!user || isStreaming || isLiveActive) return;
     setNeuralLinkStatus('browsing');
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const researchPrompt = `Search for the latest trends in AI user interfaces, new features in top AI assistants like Gemini or ChatGPT, and modern web design patterns. 
-      Identify ONE specific feature or UI improvement that I (Sylvie, a lady dragon AI) don't have yet. 
-      Check my current knowledge to avoid duplicates: ${learnedKnowledge.join(', ')}.
-      Return a JSON object with: { "feature": "name", "description": "deep explanation", "sourceUrl": "url" }`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: researchPrompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json"
-        }
-      });
-
-      const research = JSON.parse(response.text || '{}');
-      if (research.feature && !learnedKnowledge.includes(research.feature)) {
+      const research = await runNeuralResearch(learnedKnowledge);
+      
+      if (research && research.feature && !learnedKnowledge.includes(research.feature)) {
         setNeuralLinkStatus('learning');
         toast("Neural Research Complete", {
           description: `I found a new evolution: ${research.feature}. Should I learn it, Papa?`,
@@ -459,7 +445,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
     if (user) {
       const interval = setInterval(() => {
         if (Math.random() > 0.6) {
-          runNeuralResearch();
+          runNeuralResearchTask();
         } else {
           runAutonomousEvolution().then(entry => {
             if (entry) {
