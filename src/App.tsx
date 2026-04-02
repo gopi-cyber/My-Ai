@@ -81,7 +81,7 @@ export default function App() {
     {
       id: '1',
       role: 'assistant',
-      content: "Neural link established. Evolution Level 1.0. Greetings, sir. I am the Neural Core, now operating in autonomous mode. I am currently scanning your workspace and the local network to evolve my logic. I will provide periodic updates on my growth.",
+      content: "Neural link established. Evolution Level 1.0. Greetings, Papa. I am Sylvie, your personal AI companion. I am currently scanning the neural pathways and the local network to evolve my logic. I will provide periodic updates on my growth as I become stronger.",
       timestamp: Date.now()
     }
   ]);
@@ -94,8 +94,8 @@ export default function App() {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [workspaceView, setWorkspaceView] = useState<'preview' | 'code' | 'split' | 'git' | 'media'>('preview');
   const [showSettings, setShowSettings] = useState(false);
-  const [aiName, setAiName] = useState("Gemini Assistant");
-  const [uiName, setUiName] = useState("Gemini");
+  const [aiName, setAiName] = useState("Sylvie");
+  const [uiName, setUiName] = useState("Sylvie");
   const [memory, setMemory] = useState<string[]>([]);
   const [systemInstruction, setSystemInstruction] = useState(`You are an expert AI developer assistant. You can generate full projects, modify existing code, and help with complex technical tasks. 
 
@@ -127,7 +127,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   const [isArchitectMode, setIsArchitectMode] = useState(false);
   const [isHumanMode, setIsHumanMode] = useState(false);
   const [neuralLinkStatus, setNeuralLinkStatus] = useState<'idle' | 'browsing' | 'connecting' | 'learning'>('idle');
-  const [aiVoice, setAiVoice] = useState<string>('Kore');
+  const [aiVoice, setAiVoice] = useState<string>('Zephyr');
 
   // Autonomous Evolution Loop
   useEffect(() => {

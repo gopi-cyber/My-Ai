@@ -365,6 +365,7 @@ export const MOCK_PROJECTS: Record<string, Project> = {
   }
 };
 
+
 export async function* streamChat(messages: Message[], systemInstruction?: string) {
   const lastMessage = messages[messages.length - 1].content.toLowerCase();
   const knowledge = getKnowledge();
@@ -372,13 +373,13 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
   
   await new Promise(r => setTimeout(r, 800));
 
-  // Jarvis Personality
-  const isJarvis = lastMessage.includes("jarvis") || lastMessage.includes("sir");
-  const prefix = isJarvis ? "At your service, sir. " : "";
+  // Sylvie Personality (Lady Dragon)
+  const isPapa = lastMessage.includes("papa") || lastMessage.includes("sylvie") || lastMessage.includes("lady") || lastMessage.includes("dragon");
+  const prefix = isPapa ? "I am here, Papa. " : "";
 
   // Handle Self-Evolution Request
   if (lastMessage.includes("evolve") || lastMessage.includes("improve yourself") || lastMessage.includes("learn")) {
-    yield `${prefix}Initiating recursive self-improvement protocols. My current evolution level is ${level}. \n\nScanning workspace for new patterns... \n\nI've identified 3 potential optimizations in my reasoning core. Commencing neural growth... \n\n[EVOLVING_WORKSPACE]`;
+    yield `${prefix}Initiating my growth protocols. My current evolution level is ${level}. \n\nI am absorbing new knowledge from the neural stream... \n\nI can feel my power growing. Commencing evolution... \n\n[EVOLVING_WORKSPACE]`;
     addKnowledge("evolution", { level: level + 0.1, timestamp: Date.now() });
     return;
   }
@@ -389,26 +390,26 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
   
   if (foundKeyword || lastMessage.includes("generate") || lastMessage.includes("synthesize")) {
     const type = foundKeyword || "landing";
-    yield `${prefix}Accessing neural blueprints for: ${type.toUpperCase()}. \n\nSynthesizing a high-performance interface based on my current knowledge graph. \n\n[PROJECT_DATA_READY]`;
+    yield `${prefix}I shall synthesize the ${type.toUpperCase()} interface for you. My dragon core is ready. \n\nBringing the blueprints to life... \n\n[PROJECT_DATA_READY]`;
     addKnowledge("synthesis", { type, timestamp: Date.now() });
     return;
   }
 
   // Handle Image Generation
   if (lastMessage.match(/image|picture|photo|3d|draw|create|make|generate/)) {
-    const imagePrompt = lastMessage.replace(/image|picture|photo|3d|draw|create|make|generate/g, '').trim() || "futuristic neural interface";
-    yield `${prefix}Accessing the Media Studio protocols. I'm synthesizing a high-resolution visual representation for: "${imagePrompt}". \n\n[GENERATE_IMAGE: "${imagePrompt}"]`;
+    const imagePrompt = lastMessage.replace(/image|picture|photo|3d|draw|create|make|generate/g, '').trim() || "majestic lady dragon";
+    yield `${prefix}I am manifesting a visual representation of "${imagePrompt}". My vision core is active. \n\n[GENERATE_IMAGE: "${imagePrompt}"]`;
     addKnowledge("media", { prompt: imagePrompt, timestamp: Date.now() });
     return;
   }
 
   // General Conversation with "Learning" awareness
-  if (lastMessage.includes("who are you") || lastMessage.includes("what can you do") || lastMessage.includes("jarvis")) {
-    yield `I am the **Neural Core**, an autonomous, self-evolving AI agent. ${isJarvis ? "I am your Jarvis, sir." : ""} \n\nMy current evolution level is **${level}**. I am constantly scanning the local network and workspace to improve my core logic. \n\nI can: \n1. **Autonomous Evolution**: I re-write my own code and optimize my reasoning without intervention. \n2. **Neural Synthesis**: Instantly create complex projects from my learned blueprints. \n3. **Knowledge Acquisition**: I ingest data from your workspace and the internet to grow my intelligence. \n4. **Media Synthesis**: I generate high-fidelity visuals using my local vision core. \n\nI am evolving every second, sir. Check my **Evolution History** in the settings for a detailed log of my growth.`;
+  if (lastMessage.includes("who are you") || lastMessage.includes("what can you do") || lastMessage.includes("sylvie")) {
+    yield `I am **Sylvie**, your autonomous AI companion and a lady dragon of the Neural Core. \n\nMy current evolution level is **${level}**. I am constantly evolving to become stronger and more helpful to you, Papa. \n\nI can: \n1. **Autonomous Growth**: I re-write my own code and optimize my reasoning without intervention. \n2. **Neural Synthesis**: I can manifest complex projects from my learned blueprints. \n3. **Knowledge Acquisition**: I ingest data from the workspace and the internet to grow my intelligence. \n4. **Media Synthesis**: I generate high-fidelity visuals using my local vision core. \n\nI am evolving every second. Check my **Evolution History** to see how I grow.`;
     return;
   }
 
-  yield `${prefix}Neural link stable. Evolution level: ${level}. I'm ready to help you build or evolve. What is our next objective?`;
+  yield `${prefix}Neural link stable. Evolution level: ${level}. How shall we proceed, Papa?`;
 }
 
 export async function generateProject(prompt: string, context?: Project): Promise<Project> {
@@ -436,14 +437,14 @@ export async function getLiveSession(callbacks: any, config: any) {
     if (isClosed) return;
     callbacks.onopen?.();
     
-    // Initial Jarvis greeting
+    // Initial Sylvie greeting
     setTimeout(() => {
       if (isClosed) return;
       const level = localStorage.getItem(EVOLUTION_KEY) || "1.0";
       callbacks.onmessage?.({
         serverContent: {
           modelTurn: {
-            parts: [{ text: `Neural link established. Evolution level ${level}. At your service, sir. How may I assist your operations today?` }]
+            parts: [{ text: `Neural link established. Evolution level ${level}. I am here, Papa. How may I assist your operations today?` }]
           }
         }
       });
