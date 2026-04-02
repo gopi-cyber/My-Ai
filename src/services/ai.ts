@@ -1,17 +1,10 @@
 import { Message, Project } from "../types";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 /**
- * Detects which AI providers are reachable.
- * Priority: 1. Gemini (if API key present), 2. Ollama (if reachable), 3. Mock
+ * Detects which local AI providers are reachable.
+ * Priority: 1. Ollama (local), 2. Mock (simulation)
  */
-export async function getActiveAIProvider(): Promise<'gemini' | 'ollama' | 'mock'> {
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5) {
-    return 'gemini';
-  }
-
+export async function getActiveAIProvider(): Promise<'ollama' | 'mock'> {
   try {
     const response = await fetch("/api/ai/health");
     if (response.ok) {
@@ -98,47 +91,34 @@ const MOCK_PROJECTS: Record<string, Project> = {
         <h1 class="text-3xl font-black tracking-tighter">DEVICE_HUB_v1.0</h1>
         <p class="text-zinc-500 text-sm font-mono mt-1">CONNECTED_NODES: 04 | STATUS: ACTIVE</p>
       </div>
-      <div class="flex gap-4">
-        <div class="px-4 py-2 bg-zinc-900 rounded-lg border border-zinc-800 flex items-center gap-2">
-          <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-          <span class="text-[10px] font-bold uppercase tracking-widest">Neural Link Stable</span>
-        </div>
-      </div>
     </header>
-<!-- ... (Rest of HTML skipped for brevity but preserved in real write) -->
+    <div class="p-10 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
+      <p class="text-zinc-500 uppercase text-xs tracking-widest font-bold">Local interface active. Connect neural link to proceed.</p>
+    </div>
+  </div>
 </div>`,
     css: "body { margin: 0; }",
-    js: "console.log('Device controller initialized');",
+    js: "console.log('Device Hub active');",
     python: "",
+    timestamp: Date.now()
+  },
+  "python": {
+    id: "mock-python",
+    name: "Python Processor",
+    description: "Local data analysis using Python logic.",
+    html: `<div class="p-10 bg-zinc-950 text-white font-mono">
+      <h1>Python Environment</h1>
+      <p>Running local Wasm-based Python functions.</p>
+    </div>`,
+    css: "body { background: black; }",
+    js: "console.log('Python analysis ready');",
+    python: "print('Hello from Antigravity Local AI')",
     timestamp: Date.now()
   }
 };
 
 export async function* streamChat(messages: Message[], systemInstruction?: string) {
-  // Try Gemini First
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5) {
-    try {
-      const response = await ai.models.generateContentStream({
-        model: "gemini-3-flash-preview",
-        contents: messages.map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.content }]
-        })),
-        config: {
-          systemInstruction: systemInstruction || "You are an expert AI developer assistant.",
-        }
-      });
-
-      for await (const chunk of response) {
-        if (chunk.text) yield chunk.text;
-      }
-      return;
-    } catch (error: any) {
-      console.warn("Gemini Error, falling back to local:", error.message);
-    }
-  }
-
-  // Fallback to Ollama
+  // Primary: Local Ollama
   try {
     const response = await fetch("/api/ollama/api/chat", {
       method: "POST",
@@ -146,7 +126,7 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
       body: JSON.stringify({
         model: "llama3",
         messages: messages.map(m => ({ role: m.role, content: m.content })),
-        system: systemInstruction,
+        system: systemInstruction || "You are an expert AI developer assistant. You run entirely locally.",
         stream: true
       })
     });
@@ -170,10 +150,12 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
       }
       return;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Local AI Core (Ollama) unreachable, falling back to simulation.");
+  }
 
-  // Final Fallback: Mock
-  const mockText = "Neural core running in simulation mode. No API keys or local AI reachable. How can I assist you today?";
+  // Fallback: Pure Simulation Mode
+  const mockText = "System operating in Pure Privacy mode. No external API keys or local neural cores (Ollama) detected. How can I assist your offline operations today?";
   for (const char of mockText) {
     yield char;
     await new Promise(r => setTimeout(r, 10));
@@ -181,32 +163,7 @@ export async function* streamChat(messages: Message[], systemInstruction?: strin
 }
 
 export async function generateProject(prompt: string, context?: Project): Promise<Project> {
-  // Try Gemini First
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5) {
-    try {
-      const systemInstruction = `You are an expert full-stack developer. Return ONLY a JSON object: { "name": "", "description": "", "html": "", "css": "", "js": "", "python": "" }`;
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: { systemInstruction, responseMimeType: "application/json" }
-      });
-      const projectData = JSON.parse(response.text?.replace(/```json\n?|```/g, '').trim() || "{}");
-      return {
-        id: Date.now().toString(),
-        name: projectData.name || "Untitled",
-        description: projectData.description || "",
-        html: projectData.html || "",
-        css: projectData.css || "",
-        js: projectData.js || "",
-        python: projectData.python || "",
-        timestamp: Date.now()
-      };
-    } catch (e) {
-      console.warn("Gemini synthesis failed, trying local...");
-    }
-  }
-
-  // Fallback to Ollama
+  // Local Ollama JSON Mode
   try {
     const response = await fetch("/api/ollama/api/generate", {
       method: "POST",
@@ -215,7 +172,8 @@ export async function generateProject(prompt: string, context?: Project): Promis
         model: "llama3",
         prompt: `Generate a complete project for: ${prompt}. Return ONLY a JSON object with keys: name, description, html, css, js, python.`,
         format: "json",
-        stream: false
+        stream: false,
+        system: "You are an AI architect. Return ONLY valid JSON."
       })
     });
     if (response.ok) {
@@ -223,8 +181,8 @@ export async function generateProject(prompt: string, context?: Project): Promis
       const projectData = JSON.parse(data.response);
       return {
         id: Date.now().toString(),
-        name: projectData.name || "Local Project",
-        description: projectData.description || "",
+        name: projectData.name || "Local Sync Project",
+        description: projectData.description || "Synthesized by Pure Local Core.",
         html: projectData.html || "",
         css: projectData.css || "",
         js: projectData.js || "",
@@ -232,50 +190,40 @@ export async function generateProject(prompt: string, context?: Project): Promis
         timestamp: Date.now()
       };
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Local project synthesis offline, using simulation template.");
+  }
 
   return getMockProject(prompt);
 }
 
 export function getMockProject(message: string): Project {
   const msg = message.toLowerCase();
-  if (msg.includes("python")) return MOCK_PROJECTS["python"] || MOCK_PROJECTS["landing"];
-  if (msg.includes("device")) return MOCK_PROJECTS["device"] || MOCK_PROJECTS["landing"];
-  if (msg.includes("dashboard")) return MOCK_PROJECTS["dashboard"] || MOCK_PROJECTS["landing"];
+  if (msg.includes("python")) return MOCK_PROJECTS["python"];
+  if (msg.includes("device")) return MOCK_PROJECTS["device"];
+  if (msg.includes("dashboard")) return MOCK_PROJECTS["dashboard"];
   return MOCK_PROJECTS["landing"];
 }
 
+/**
+ * Placeholder for former cloud features.
+ * Now points to local browser alternatives.
+ */
 export const getLiveSession = (callbacks: any, systemInstruction?: string) => {
-  return ai.live.connect({
-    model: "gemini-3.1-flash-live-preview",
-    callbacks,
-    config: {
-      systemInstruction: systemInstruction || "You are a helpful AI assistant in live voice mode.",
-      responseModalities: ["AUDIO" as any],
-    }
-  });
+  console.warn("Cloud-based Gemini Live is disabled in Pure Local Mode.");
+  return null;
 };
 
 export async function generateCode(prompt: string, type: string, context?: Project): Promise<string> {
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: { systemInstruction: `Generate ONLY the ${type} code. No markdown.` }
-      });
-      return response.text?.replace(/```[a-z]*\n?|```/g, '').trim() || "";
-    } catch (e) {}
-  }
-
-  // Local fallback simplified
-  return "/* Code generation failed. Please check local AI status. */";
+  // Local fallback simplified for now
+  return `/* Local code generation for ${type} in progress... Please verify Ollama is active. */`;
 }
 
 export async function generateImageFromPrompt(prompt: string): Promise<string> {
-  return ""; // Placeholder for local migration
+  console.warn("Cloud image generation disabled for privacy. Local SD integration pending.");
+  return "";
 }
 
 export async function evolveApp(prompt: string, currentCode: string): Promise<string> {
-  return currentCode; // Placeholder
+  return currentCode;
 }

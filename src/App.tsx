@@ -67,12 +67,10 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster, toast } from 'sonner';
 import { Message, Project } from './types';
-import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt, getActiveAIProvider } from './services/gemini';
+import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt, getActiveAIProvider } from './services/ai';
 import { validateJS, validateCSS, validateHTML, validatePython, ValidationError } from './lib/validator';
 import { JSREPL } from './components/JSREPL';
 import { PythonREPL } from './components/PythonREPL';
-import { LiveModeOrb } from './components/LiveModeOrb';
-import { LiveServerMessage } from "@google/genai";
 
 export default function App() {
   const [isBooting, setIsBooting] = useState(true);
@@ -81,7 +79,7 @@ export default function App() {
     {
       id: '1',
       role: 'assistant',
-      content: 'System initialized. Gemini Assistant online. How can I assist your operations today?',
+      content: 'Local AI Core initialized. Neural link established. How can I assist your offline operations today?',
       timestamp: Date.now()
     }
   ]);
@@ -92,8 +90,8 @@ export default function App() {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [workspaceView, setWorkspaceView] = useState<'preview' | 'code' | 'split' | 'git' | 'media'>('preview');
   const [showSettings, setShowSettings] = useState(false);
-  const [aiName, setAiName] = useState("Gemini Assistant");
-  const [uiName, setUiName] = useState("Gemini");
+  const [aiName, setAiName] = useState("Neural Assistant");
+  const [uiName, setUiName] = useState("Antigravity");
   const [memory, setMemory] = useState<string[]>([]);
   const [systemInstruction, setSystemInstruction] = useState(`You are an expert AI developer assistant. You can generate full projects, modify existing code, and help with complex technical tasks. 
 
@@ -105,15 +103,11 @@ When a user asks to build, create, or modify a project:
 Do not include the code itself in the chat; it will be generated in a separate workspace synthesis operation.
 
 If the user asks you to generate an image, output the exact string: [GENERATE_IMAGE: "detailed description of the image"]. The system will intercept this and generate the image in the chat.
-If the user asks you to generate a video, politely inform them that video generation requires a paid API key and is currently disabled.
+If the user asks you to generate a video, politely inform them that video generation requires a cloud sub-processor and is currently disabled for privacy.
 
 If the user asks you to change your name, output the exact string: [SET_AI_NAME: "New Name"]
 If the user asks you to change the UI name, output the exact string: [SET_UI_NAME: "New UI Name"]
 If the user asks you to remember something, output the exact string: [REMEMBER: "Fact to remember"]`);
-  const [isLiveMode, setIsLiveMode] = useState(false);
-  const [isLiveActive, setIsLiveActive] = useState(false);
-  const [liveTranscript, setLiveTranscript] = useState<{ role: string, text: string }[]>([]);
-  const [audioLevel, setAudioLevel] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [debouncedProject, setDebouncedProject] = useState<Project | null>(null);
   const [isListening, setIsListening] = useState(false);
@@ -200,20 +194,6 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const liveSessionRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const nextStartTimeRef = useRef<number>(0);
-  const recognitionRef = useRef<any>(null);
-
-  const liveTranscriptRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (liveTranscriptRef.current) {
-      liveTranscriptRef.current.scrollTop = liveTranscriptRef.current.scrollHeight;
-    }
-  }, [liveTranscript]);
-
   useEffect(() => {
     if (activeProject) {
       const timer = setTimeout(() => {
@@ -617,214 +597,6 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
     }
   };
 
-  const startLiveMode = async () => {
-    if (aiProvider !== 'gemini') {
-      toast.error("Gemini Live requires an active API key. Local mode does not support live voice yet.");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          noiseSuppression: true,
-          echoCancellation: true,
-          autoGainControl: true,
-          sampleRate: { ideal: 16000 },
-          channelCount: { ideal: 1 }
-        } 
-      });
-      mediaStreamRef.current = stream;
-      
-      const audioContext = new AudioContext({ sampleRate: 16000 });
-      audioContextRef.current = audioContext;
-      nextStartTimeRef.current = 0;
-      
-      const source = audioContext.createMediaStreamSource(stream);
-      
-      // Input Filter: High-pass to remove low-frequency rumble
-      const inputFilter = audioContext.createBiquadFilter();
-      inputFilter.type = 'highpass';
-      inputFilter.frequency.value = 200;
-      source.connect(inputFilter);
-      
-      const analyzer = audioContext.createAnalyser();
-      analyzer.fftSize = 256;
-      inputFilter.connect(analyzer);
-      
-      const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-      const updateLevel = () => {
-        if (!isLiveActive) return;
-        analyzer.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        setAudioLevel(average);
-        requestAnimationFrame(updateLevel);
-      };
-      
-      const currentSystemInstruction = `${systemInstruction}\n\n${memory.length > 0 ? `Here are some things you must remember:\n${memory.map(m => `- ${m}`).join('\n')}` : ''}`;
-      
-      const session = await getLiveSession({
-        onopen: () => {
-          setIsLiveActive(true);
-          updateLevel();
-          // Start sending audio
-          const processor = audioContext.createScriptProcessor(2048, 1, 1);
-          inputFilter.connect(processor);
-          processor.connect(audioContext.destination);
-          processor.onaudioprocess = (e) => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            
-            // Noise Gate
-            const threshold = 0.01;
-            for (let i = 0; i < inputData.length; i++) {
-              if (Math.abs(inputData[i]) < threshold) {
-                inputData[i] = 0;
-              }
-            }
-
-            // Convert to Int16 PCM
-            const pcmData = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-            }
-            
-            // Faster base64 conversion
-            const bytes = new Uint8Array(pcmData.buffer);
-            let binary = "";
-            for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64Data = btoa(binary);
-            
-            session.sendRealtimeInput({
-              audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-            });
-          };
-        },
-        onmessage: async (message: LiveServerMessage) => {
-          if (message.serverContent?.modelTurn) {
-            const parts = message.serverContent.modelTurn.parts;
-            for (const part of parts) {
-              if (part.inlineData?.data) {
-                // Play audio
-                const binary = atob(part.inlineData.data);
-                const bytes = new Uint8Array(binary.length);
-                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                const pcm = new Int16Array(bytes.buffer);
-                const float32 = new Float32Array(pcm.length);
-                for (let i = 0; i < pcm.length; i++) float32[i] = pcm[i] / 0x7FFF;
-                
-                const buffer = audioContext.createBuffer(1, float32.length, 16000);
-                buffer.getChannelData(0).set(float32);
-                const source = audioContext.createBufferSource();
-                source.buffer = buffer;
-                
-                // Output Filter: High-pass to improve voice clarity
-                const outputFilter = audioContext.createBiquadFilter();
-                outputFilter.type = 'highpass';
-                outputFilter.frequency.value = 200;
-                
-                source.connect(outputFilter);
-                outputFilter.connect(audioContext.destination);
-                
-                const startTime = Math.max(audioContext.currentTime, nextStartTimeRef.current);
-                source.start(startTime);
-                nextStartTimeRef.current = startTime + buffer.duration;
-              }
-              if (part.text) {
-                let text = part.text;
-                
-                let aiNameMatch;
-                while ((aiNameMatch = text.match(/\[SET_AI_NAME:\s*"([^"]+)"\]/))) {
-                  setAiName(aiNameMatch[1]);
-                  text = text.replace(aiNameMatch[0], '').trim();
-                }
-
-                let uiNameMatch;
-                while ((uiNameMatch = text.match(/\[SET_UI_NAME:\s*"([^"]+)"\]/))) {
-                  setUiName(uiNameMatch[1]);
-                  text = text.replace(uiNameMatch[0], '').trim();
-                }
-
-                let rememberMatch;
-                while ((rememberMatch = text.match(/\[REMEMBER:\s*"([^"]+)"\]/))) {
-                  const fact = rememberMatch[1];
-                  setMemory(prev => {
-                    if (!prev.includes(fact)) {
-                      return [...prev, fact];
-                    }
-                    return prev;
-                  });
-                  text = text.replace(rememberMatch[0], '').trim();
-                }
-
-                let generateImageMatch;
-                while ((generateImageMatch = text.match(/\[GENERATE_IMAGE:\s*"([^"]+)"\]/))) {
-                  const imagePrompt = generateImageMatch[1];
-                  text = text.replace(generateImageMatch[0], '').trim();
-                  
-                  const genToastId = toast.loading("Generating image...");
-                  generateImageFromPrompt(imagePrompt).then(url => {
-                    toast.success("Image generated successfully.", { id: genToastId });
-                    setMessages(prev => [...prev, {
-                      id: Date.now().toString(),
-                      role: 'assistant',
-                      content: `Here is the image you requested in voice mode: "${imagePrompt}"`,
-                      timestamp: Date.now(),
-                      generatedMedia: { type: 'image', url }
-                    }]);
-                  }).catch(err => {
-                    toast.error("Failed to generate image.", { id: genToastId });
-                  });
-                }
-
-                let generateVideoMatch;
-                while ((generateVideoMatch = text.match(/\[GENERATE_VIDEO:\s*"([^"]+)"\]/))) {
-                  text = text.replace(generateVideoMatch[0], '').trim();
-                  toast.error("Video generation requires a paid API key, which you have opted out of.");
-                }
-
-                if (text) {
-                  setLiveTranscript(prev => [...prev, { role: 'model', text }]);
-                }
-              }
-            }
-          }
-        },
-        onclose: () => stopLiveMode(),
-        onerror: (err: any) => console.error("Live Mode Error:", err),
-      }, currentSystemInstruction);
-      
-      liveSessionRef.current = session;
-      setIsLiveMode(true);
-      toast.success("Gemini Live session established.");
-    } catch (err: any) {
-      console.error("Failed to start live mode:", err);
-      toast.error("Live Mode Initialization Failed", {
-        description: err.message || "Microphone access is required for Live Mode.",
-      });
-    }
-  };
-
-  const stopLiveMode = () => {
-    if (liveSessionRef.current) {
-      liveSessionRef.current.close();
-      liveSessionRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(t => t.stop());
-      mediaStreamRef.current = null;
-    }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    
-    setIsLiveMode(false);
-    setIsLiveActive(false);
-    setLiveTranscript([]);
-    setAudioLevel(0);
-    nextStartTimeRef.current = 0;
-  };
-
   useEffect(() => {
     if (isStreaming) {
       const statuses: ('browsing' | 'connecting' | 'learning')[] = ['browsing', 'connecting', 'learning'];
@@ -1105,57 +877,6 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
           ? (mobileView === 'chat' ? "flex-1 w-full" : "hidden") 
           : (activeProject ? "w-1/3" : "flex-1")
       )}>
-        {/* Live Mode Overlay */}
-        <AnimatePresence>
-          {isLiveMode && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-50 bg-background/95 backdrop-blur-xl flex flex-col items-center justify-center p-12"
-            >
-              <div className="absolute top-8 right-8">
-                <Button variant="ghost" size="icon" onClick={stopLiveMode} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-6 h-6" />
-                </Button>
-              </div>
-
-              <div className="flex flex-col items-center gap-8 max-w-md w-full px-4">
-                <LiveModeOrb audioLevel={audioLevel} isLiveActive={isLiveActive} isSpeaking={currentlySpeaking !== null} />
-
-                <div className="text-center space-y-2">
-                  <h2 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">{uiName} Live</h2>
-                  <p className="text-muted-foreground text-xs md:text-sm">Real-time neural voice synchronization active.</p>
-                </div>
-
-                <div ref={liveTranscriptRef} className="w-full h-32 md:h-40 overflow-y-auto space-y-2 text-center px-4">
-                  {liveTranscript.slice(-10).map((t, i) => (
-                    <motion.p 
-                      key={i}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-xs md:text-sm text-muted-foreground italic"
-                    >
-                      {t.text}
-                    </motion.p>
-                  ))}
-                </div>
-
-                <div className="flex gap-4">
-                  <Button 
-                    variant="outline" 
-                    size="lg" 
-                    onClick={stopLiveMode}
-                    className="rounded-full border-border text-muted-foreground hover:bg-muted"
-                  >
-                    <MicOff className="w-5 h-5 mr-2" />
-                    End Session
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Header */}
         <header className="h-14 border-b border-border flex items-center px-6 bg-background/50 backdrop-blur-md z-10 overflow-x-auto whitespace-nowrap scrollbar-hide">
@@ -1231,15 +952,6 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                 Project
               </Button>
             )}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={startLiveMode}
-              className="text-muted-foreground hover:text-blue-400 hover:bg-blue-500/10 rounded-full px-4"
-            >
-              <Mic className="w-4 h-4 mr-2" />
-              Live Mode
-            </Button>
             <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={toggleTheme}>
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
