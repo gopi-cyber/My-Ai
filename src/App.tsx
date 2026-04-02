@@ -81,7 +81,7 @@ export default function App() {
     {
       id: '1',
       role: 'assistant',
-      content: 'System initialized. Gemini Assistant online. How can I assist your operations today?',
+      content: "Neural link established. Greetings, sir. I am the Neural Core, your personal AI agent. I am ready to assist with your development needs. You can ask me to synthesize a 'landing page', 'dashboard', or 'login page' to begin.",
       timestamp: Date.now()
     }
   ]);
@@ -535,6 +535,34 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
           toast.error("Video generation requires a paid API key, which you have opted out of.");
         }
 
+        if (fullContent.includes('[EVOLVING_WORKSPACE]')) {
+          const cleanContent = fullContent.replace('[EVOLVING_WORKSPACE]', '').trim();
+          setMessages(prev => prev.map(m => 
+            m.id === assistantMessageId ? { ...m, content: cleanContent } : m
+          ));
+
+          const genToastId = toast.loading("Neural core is evolving workspace logic...");
+          try {
+            const evolvedCode = await evolveApp(messageContent, activeProject.html);
+            setActiveProject(prev => ({ ...prev, html: evolvedCode }));
+            toast.success("Neural evolution complete.", {
+              id: genToastId,
+              description: "The workspace has been upgraded with new logic.",
+              icon: <Zap className="w-4 h-4 text-amber-500" />
+            });
+            setMessages(prev => prev.map(m => 
+              m.id === assistantMessageId ? { ...m, content: cleanContent + "\n\n[Neural Evolution Complete]" } : m
+            ));
+          } catch (err) {
+            console.error("Evolution failed:", err);
+            toast.error("Evolution Failed", {
+              id: genToastId,
+              description: "The neural core could not evolve the workspace."
+            });
+          }
+          break;
+        }
+
         if (fullContent.includes('[PROJECT_DATA_READY]')) {
           const cleanContent = fullContent.replace('[PROJECT_DATA_READY]', '').trim();
           setMessages(prev => prev.map(m => 
@@ -651,11 +679,7 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
             
             // Faster base64 conversion
             const bytes = new Uint8Array(pcmData.buffer);
-            let binary = "";
-            for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64Data = btoa(binary);
+            const base64Data = btoa(String.fromCharCode.apply(null, bytes as any));
             
             session.sendRealtimeInput({
               audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
