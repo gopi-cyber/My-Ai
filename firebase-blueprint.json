@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "aiName": { "type": "string" },
+        "uiName": { "type": "string" },
+        "aiVoice": { "type": "string" },
+        "evolutionLevel": { "type": "number" },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single chat message",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "generatedMedia": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["image", "video"] },
+            "url": { "type": "string", "format": "uri" }
+          }
+        }
+      },
+      "required": ["role", "content", "timestamp"]
+    },
+    "EvolutionEntry": {
+      "title": "Evolution Entry",
+      "description": "A log entry for Sylvie's evolution",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["Code Patch", "Knowledge Acquisition", "Neural Optimization"] },
+        "description": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["type", "description", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and settings"
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "User's chat history"
+    },
+    "/users/{userId}/evolution_history/{entryId}": {
+      "schema": "EvolutionEntry",
+      "description": "Sylvie's evolution logs for the user"
+    }
+  }
+}

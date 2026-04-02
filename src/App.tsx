@@ -67,6 +67,24 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster, toast } from 'sonner';
 import { Message, Project } from './types';
+import { 
+  auth, 
+  db, 
+  googleProvider, 
+  signInWithPopup, 
+  onAuthStateChanged, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  orderBy, 
+  limit, 
+  addDoc, 
+  serverTimestamp,
+  User as FirebaseUser
+} from './firebase';
 import { streamChat, getMockProject, getLiveSession, generateCode, generateProject, evolveApp, generateImageFromPrompt, runAutonomousEvolution, getEvolutionHistory } from './services/gemini';
 import { validateJS, validateCSS, validateHTML, validatePython, ValidationError } from './lib/validator';
 import { JSREPL } from './components/JSREPL';
@@ -74,17 +92,43 @@ import { PythonREPL } from './components/PythonREPL';
 import { LiveModeOrb } from './components/LiveModeOrb';
 import { LiveServerMessage } from "@google/genai";
 
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-screen flex flex-col items-center justify-center bg-background p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+          <h1 className="text-2xl font-bold mb-2 text-foreground">Neural Core Collapse</h1>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Sylvie's neural pathways have encountered a critical error. 
+            {this.state.error?.message && <code className="block mt-2 p-2 bg-muted rounded text-xs">{this.state.error.message}</code>}
+          </p>
+          <Button onClick={() => window.location.reload()}>Reboot System</Button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [isBooting, setIsBooting] = useState(true);
   const [bootProgress, setBootProgress] = useState(0);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Neural link established. Evolution Level 1.0. Greetings, Papa. I am Sylvie, your personal AI companion. I am currently scanning the neural pathways and the local network to evolve my logic. I will provide periodic updates on my growth as I become stronger.",
-      timestamp: Date.now()
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [evolutionHistory, setEvolutionHistory] = useState<any[]>([]);
@@ -128,6 +172,130 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   const [isHumanMode, setIsHumanMode] = useState(false);
   const [neuralLinkStatus, setNeuralLinkStatus] = useState<'idle' | 'browsing' | 'connecting' | 'learning'>('idle');
   const [aiVoice, setAiVoice] = useState<string>('Puck');
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleFirestoreError = (error: any, operation: string, path: string) => {
+    const errInfo = {
+      error: error.message || String(error),
+      operation,
+      path,
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+      }
+    };
+    console.error('Firestore Error:', JSON.stringify(errInfo));
+    toast.error("Neural Sync Error", {
+      description: "Failed to sync with cloud core. Check your connection."
+    });
+  };
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      toast.success("Neural Link Established", {
+        description: "Welcome back, Papa."
+      });
+    } catch (err: any) {
+      console.error("Login failed:", err);
+      toast.error("Authentication Failed", {
+        description: err.message
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      setUser(null);
+      toast.info("Neural Link Severed", {
+        description: "Sylvie is now in local mode."
+      });
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
+  // Auth State Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthReady(true);
+      if (u) {
+        // Update user profile in Firestore
+        const userRef = doc(db, 'users', u.uid);
+        setDoc(userRef, {
+          uid: u.uid,
+          email: u.email,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          lastSeen: new Date().toISOString()
+        }, { merge: true }).catch(err => handleFirestoreError(err, 'write', `users/${u.uid}`));
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Initial message for unauthenticated users
+  useEffect(() => {
+    if (isAuthReady && !user && messages.length === 0) {
+      setMessages([{
+        id: '1',
+        role: 'assistant',
+        content: "Neural link established. Evolution Level 1.0. Greetings, Papa. I am Sylvie, your personal AI companion. I am currently scanning the neural pathways and the local network to evolve my logic. I will provide periodic updates on my growth as I become stronger.",
+        timestamp: Date.now()
+      }]);
+    }
+  }, [isAuthReady, user, messages.length]);
+
+  // Sync Data with Firestore
+  useEffect(() => {
+    if (!user) return;
+
+    setIsSyncing(true);
+    const messagesQuery = query(collection(db, 'users', user.uid, 'messages'), orderBy('timestamp', 'asc'));
+    const evolutionQuery = query(collection(db, 'users', user.uid, 'evolution_history'), orderBy('timestamp', 'desc'), limit(50));
+
+    const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
+      const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Message));
+      if (msgs.length > 0) {
+        setMessages(msgs);
+      } else {
+        setMessages([{
+          id: '1',
+          role: 'assistant',
+          content: "Neural link established. Evolution Level 1.0. Greetings, Papa. I am Sylvie, your personal AI companion. I am currently scanning the neural pathways and the local network to evolve my logic. I will provide periodic updates on my growth as I become stronger.",
+          timestamp: Date.now()
+        }]);
+      }
+    }, (err) => handleFirestoreError(err, 'list', `users/${user.uid}/messages`));
+
+    const unsubEvolution = onSnapshot(evolutionQuery, (snapshot) => {
+      const history = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setEvolutionHistory(history);
+    }, (err) => handleFirestoreError(err, 'list', `users/${user.uid}/evolution_history`));
+
+    // Sync Settings
+    const unsubUser = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.aiName) setAiName(data.aiName);
+        if (data.uiName) setUiName(data.uiName);
+        if (data.aiVoice) setAiVoice(data.aiVoice);
+        if (data.memory) setMemory(data.memory);
+      }
+    }, (err) => handleFirestoreError(err, 'get', `users/${user.uid}`));
+
+    setIsSyncing(false);
+
+    return () => {
+      unsubMessages();
+      unsubEvolution();
+      unsubUser();
+    };
+  }, [user]);
 
   const speak = (text: string) => {
     if (!window.speechSynthesis) return;
@@ -171,7 +339,12 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
       try {
         const entry = await runAutonomousEvolution();
         if (entry) {
-          setEvolutionHistory(prev => [entry, ...prev].slice(0, 50));
+          if (user) {
+            const entryRef = doc(db, 'users', user.uid, 'evolution_history', entry.id || Date.now().toString());
+            setDoc(entryRef, entry).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}/evolution_history/${entry.id}`));
+          } else {
+            setEvolutionHistory(prev => [entry, ...prev].slice(0, 50));
+          }
           toast.info("Neural Evolution Update", {
             description: entry.description,
             icon: <Zap className="w-4 h-4 text-amber-500 animate-pulse" />,
@@ -504,7 +677,12 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
       attachments: customMessage ? [] : [...attachments]
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    if (user) {
+      const msgRef = doc(db, 'users', user.uid, 'messages', userMessage.id);
+      setDoc(msgRef, userMessage).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}/messages/${userMessage.id}`));
+    } else {
+      setMessages(prev => [...prev, userMessage]);
+    }
     
     if (!customMessage) {
       setCommandHistory(prev => [messageContent, ...prev.filter(h => h !== messageContent)].slice(0, 50));
@@ -551,13 +729,21 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
         // Command parsing
         let aiNameMatch;
         while ((aiNameMatch = fullContent.match(/\[SET_AI_NAME:\s*"([^"]+)"\]/))) {
-          setAiName(aiNameMatch[1]);
+          const newName = aiNameMatch[1];
+          setAiName(newName);
+          if (user) {
+            setDoc(doc(db, 'users', user.uid), { aiName: newName }, { merge: true }).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}`));
+          }
           fullContent = fullContent.replace(aiNameMatch[0], '').trim();
         }
 
         let uiNameMatch;
         while ((uiNameMatch = fullContent.match(/\[SET_UI_NAME:\s*"([^"]+)"\]/))) {
-          setUiName(uiNameMatch[1]);
+          const newName = uiNameMatch[1];
+          setUiName(newName);
+          if (user) {
+            setDoc(doc(db, 'users', user.uid), { uiName: newName }, { merge: true }).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}`));
+          }
           fullContent = fullContent.replace(uiNameMatch[0], '').trim();
         }
 
@@ -660,6 +846,18 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
           m.id === assistantMessageId ? { ...m, content: fullContent } : m
         ));
       }
+      
+      if (user) {
+        const assistantMessage: Message = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: fullContent,
+          timestamp: Date.now()
+        };
+        const msgRef = doc(db, 'users', user.uid, 'messages', assistantMessageId);
+        setDoc(msgRef, assistantMessage).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}/messages/${assistantMessageId}`));
+      }
+      
       speak(fullContent);
     } catch (error: any) {
       console.error('Streaming error:', error);
@@ -970,13 +1168,14 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
   };
 
   return (
-    <TooltipProvider>
-      <style>{customStyles}</style>
-      <Toaster position="top-right" theme="dark" richColors closeButton />
-      <div className={cn(
-        "flex flex-col md:flex-row h-dvh bg-background text-foreground font-sans selection:bg-blue-500/30 overflow-hidden",
-        theme === 'dark' ? 'dark' : ''
-      )}>
+    <ErrorBoundary>
+      <TooltipProvider>
+        <div className={cn(
+          "flex flex-col md:flex-row h-dvh bg-background text-foreground font-sans selection:bg-blue-500/30 overflow-hidden",
+          theme === 'dark' ? 'dark' : ''
+        )}>
+          <style>{customStyles}</style>
+          <Toaster position="top-right" theme="dark" richColors closeButton />
         {/* Sidebar Settings (AI Studio style) */}
         <AnimatePresence>
           {showSettings && (
@@ -996,6 +1195,31 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                   <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)}>
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Neural Link (Cloud Sync)</label>
+                  {user ? (
+                    <div className="flex flex-col gap-3 p-4 bg-muted/50 rounded-xl border border-border">
+                      <div className="flex items-center gap-3">
+                        <img src={user.photoURL || ''} alt="" className="w-8 h-8 rounded-full border border-border" referrerPolicy="no-referrer" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold truncate text-foreground">{user.displayName || 'Papa'}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={handleLogout} className="w-full h-8 text-[10px] uppercase tracking-widest">
+                        Sever Link
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button onClick={handleLogin} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-blue-500/20">
+                      Establish Neural Link
+                    </Button>
+                  )}
+                  <p className="text-[9px] text-muted-foreground italic px-1">
+                    Linking Sylvie to the cloud core allows her to evolve 24/7 and remember everything across devices.
+                  </p>
                 </div>
 
                 <div className="space-y-4">
@@ -1037,7 +1261,11 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
                         if (e.key === 'Enter') {
                           const val = e.currentTarget.value.trim();
                           if (val && !memory.includes(val)) {
-                            setMemory(prev => [...prev, val]);
+                            const newMemory = [...memory, val];
+                            setMemory(newMemory);
+                            if (user) {
+                              setDoc(doc(db, 'users', user.uid), { memory: newMemory }, { merge: true }).catch(err => handleFirestoreError(err, 'write', `users/${user.uid}`));
+                            }
                             e.currentTarget.value = '';
                           }
                         }
@@ -1583,8 +1811,6 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
           </div>
         </footer>
       </div>
-
-      {/* Project Workspace Panel */}
       <AnimatePresence>
         {activeProject && (
           <motion.div 
@@ -2413,7 +2639,8 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
-    </TooltipProvider>
+        </div>
+      </TooltipProvider>
+    </ErrorBoundary>
   );
 }
