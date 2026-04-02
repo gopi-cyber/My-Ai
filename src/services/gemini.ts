@@ -105,15 +105,60 @@ export function getMockProject(id: string): Project | null {
 }
 
 export async function getLiveSession(callbacks: any, config: any) {
+  let isClosed = false;
+  
   setTimeout(() => {
+    if (isClosed) return;
     callbacks.onopen?.();
+    
+    // Simulate periodic AI "thoughts" or responses
+    const simulateResponse = () => {
+      if (isClosed) return;
+      
+      const responses = [
+        "I'm monitoring your neural workspace. Everything looks optimal.",
+        "Detected a new code pattern. Would you like me to optimize it?",
+        "Neural link stable. I'm ready for your instructions.",
+        "I see you're working on the UI. The current layout is very responsive."
+      ];
+      
+      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+      
+      callbacks.onmessage?.({
+        serverContent: {
+          modelTurn: {
+            parts: [{ text: randomResponse }]
+          }
+        }
+      });
+      
+      // Schedule next response
+      setTimeout(simulateResponse, 15000 + Math.random() * 15000);
+    };
+    
+    setTimeout(simulateResponse, 3000);
   }, 500);
   
   return {
     sendRealtimeInput: (input: any) => {
       console.log("Simulating realtime input:", input);
+      // Maybe respond to input?
+      if (input.text) {
+        setTimeout(() => {
+          callbacks.onmessage?.({
+            serverContent: {
+              modelTurn: {
+                parts: [{ text: `I've processed your input: "${input.text}". How should we proceed?` }]
+              }
+            }
+          });
+        }, 1000);
+      }
     },
-    close: () => {}
+    close: () => {
+      isClosed = true;
+      callbacks.onclose?.();
+    }
   };
 }
 
