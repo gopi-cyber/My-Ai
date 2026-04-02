@@ -165,7 +165,18 @@ If the user asks you to remember something, output the exact string: [REMEMBER: 
       const provider = await getActiveAIProvider();
       setAiProvider(provider);
       
-      if (provider === 'ollama') {
+      if (provider === 'nvidia') {
+        setAiName("Elite Neural Core");
+        setUiName("Antigravity Elite");
+        setMessages(prev => [
+          {
+            id: 'init-nvidia',
+            role: 'assistant',
+            content: 'NVIDIA Elite Neural Core online. High-performance cloud processing (z-ai/glm-4.7) active. How can I assist your high-level operations today?',
+            timestamp: Date.now()
+          }
+        ]);
+      } else if (provider === 'ollama') {
         setAiName("Local Neural Core");
         setUiName("Antigravity Local");
         setMessages(prev => [

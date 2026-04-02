@@ -40,6 +40,31 @@ async function startServer() {
     })
   );
 
+  // NVIDIA NIM Proxy
+  app.use(
+    "/api/ai/nvidia",
+    createProxyMiddleware({
+      target: "https://integrate.api.nvidia.com/v1",
+      changeOrigin: true,
+      pathRewrite: {
+        "^/api/ai/nvidia": "",
+      },
+      on: {
+        proxyReq: (proxyReq, req: any) => {
+          if (process.env.NVIDIA_API_KEY) {
+            proxyReq.setHeader("Authorization", `Bearer ${process.env.NVIDIA_API_KEY}`);
+          }
+        },
+        error: (err, req, res: any) => {
+          console.error("NVIDIA Proxy Error:", err.message);
+          if (res.status) {
+            res.status(502).json({ error: "NVIDIA_PROXY_ERROR", message: err.message });
+          }
+        },
+      },
+    })
+  );
+
   // AI Health Check
   app.get("/api/ai/health", async (req, res) => {
     const status: any = { ollama: "offline", gemini: "inactive" };
@@ -53,6 +78,11 @@ async function startServer() {
     // Check Gemini key
     if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "YOUR_API_KEY") {
       status.gemini = "active";
+    }
+
+    // Check NVIDIA key
+    if (process.env.NVIDIA_API_KEY) {
+      status.nvidia = "active";
     }
 
     res.json(status);
